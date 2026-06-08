@@ -4,7 +4,7 @@ import javax.swing.SwingUtilities;
 
 public class ChatClient {
     private static final String DEFAULT_HOST = "127.0.0.1";
-    private static final int DEFAULT_PORT = 5000;
+    private static final int DEFAULT_PORT = 5001;
 
     public static void main(String[] args) {
         final String host = args.length >= 1 ? args[0] : DEFAULT_HOST;

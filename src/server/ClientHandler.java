@@ -1,33 +1,53 @@
 package server;
 
 import common.Protocol;
+import server.decorator.LoggingHandler;
+import server.decorator.SocketHandler;
+import server.decorator.ValidationHandler;
+import server.observer.ServerBroadcaster;
+import server.observer.ServerObserver;
+import server.router.MessageRouter;
+import server.service.client.IClientManager;
+import server.service.file.IFileService;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 
-public class ClientHandler implements Runnable {
+public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
+    // Mỗi ClientHandler xử lý một kết nối socket của một client.
     private final Socket socket;
-    private final ClientManager clientManager;
+    private final IClientManager clientManager;
     private final MessageRouter router;
-    private final FileService fileService;
+    private final IFileService fileService;
+    private final ServerBroadcaster broadcaster;
     private final InputStream inputStream;
     private final OutputStream outputStream;
+    private final SocketHandler baseSender;
+    private SocketHandler sendHandler;
     private volatile String username;
     private volatile boolean running = true;
 
-    public ClientHandler(Socket socket, ClientManager clientManager, MessageRouter router, FileService fileService) throws IOException {
+    public ClientHandler(Socket socket, IClientManager clientManager, MessageRouter router, IFileService fileService, ServerBroadcaster broadcaster) throws IOException {
         this.socket = socket;
         this.clientManager = clientManager;
         this.router = router;
         this.fileService = fileService;
+        this.broadcaster = broadcaster;
         this.inputStream = socket.getInputStream();
         this.outputStream = socket.getOutputStream();
+        this.baseSender = new SocketHandler() {
+            @Override
+            public void send(String line) {
+                sendDirect(line);
+            }
+        };
     }
 
     @Override
     public void run() {
+        // Vòng lặp chính của thread client: đăng nhập trước, rồi đọc command từ client liên tục.
         try {
             if (!login()) {
                 return;
@@ -54,7 +74,16 @@ public class ClientHandler implements Runnable {
         }
     }
 
+    @Override
     public synchronized void send(String line) {
+        if (sendHandler != null) {
+            sendHandler.send(line);
+        } else {
+            sendDirect(line);
+        }
+    }
+
+    private synchronized void sendDirect(String line) {
         try {
             Protocol.writeLine(outputStream, line);
         } catch (IOException e) {
@@ -74,10 +103,11 @@ public class ClientHandler implements Runnable {
         return outputStream;
     }
 
-    public FileService getFileService() {
+    public IFileService getFileService() {
         return fileService;
     }
 
+    // Xử lý login đầu tiên: client phải gửi LOGIN|username ngay khi kết nối.
     private boolean login() throws IOException {
         String line = Protocol.readLine(inputStream);
         Protocol.ParsedMessage message = Protocol.parse(line);
@@ -95,10 +125,13 @@ public class ClientHandler implements Runnable {
             return false;
         }
         username = requestedUsername;
+        this.sendHandler = new ValidationHandler(new LoggingHandler(baseSender, username));
+        broadcaster.subscribe(this);
         router.sendInitialState(this);
         return true;
     }
 
+    // Xử lý metadata file khi client gửi file lên server.
     private void handleFileMeta(Protocol.ParsedMessage message) throws Exception {
         String conversationType = message.field(0);
         String conversationId = message.field(1);
@@ -116,8 +149,31 @@ public class ClientHandler implements Runnable {
         return value != null && value.matches("[A-Za-z0-9_-]{3,20}");
     }
 
+    @Override
+    public void onUserJoined(String username) {
+        send(Protocol.build(Protocol.JOIN, username));
+    }
+
+    @Override
+    public void onUserLeft(String username) {
+        send(Protocol.build(Protocol.LEAVE, username));
+    }
+
+    @Override
+    public void onUserListUpdated(String csvUsers) {
+        send(Protocol.build(Protocol.USER_LIST, csvUsers));
+    }
+
+    @Override
+    public void onRoomListUpdated(String roomList) {
+        send(Protocol.build(Protocol.ROOM_LIST, roomList));
+    }
+
     private void close() {
         running = false;
+        if (broadcaster != null && username != null) {
+            broadcaster.unsubscribe(this);
+        }
         try {
             socket.close();
         } catch (IOException ignored) {
