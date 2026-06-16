@@ -13,6 +13,7 @@ public class HandlerFactory {
         // Đăng ký tất cả strategy
         strategies.put(Protocol.ROOM_MSG, new RoomMessageStrategy(router));
         strategies.put(Protocol.PRIVATE_MSG, new PrivateMessageStrategy(router));
+        strategies.put(Protocol.FORWARD_MSG, new ForwardMessageStrategy(router));
         strategies.put(Protocol.HISTORY_REQUEST, new HistoryRequestStrategy(router));
         strategies.put(Protocol.CREATE_ROOM, new CreateRoomStrategy(router));
         strategies.put(Protocol.JOIN_ROOM, new JoinRoomStrategy(router));

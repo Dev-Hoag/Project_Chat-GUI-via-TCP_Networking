@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.Properties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -309,10 +310,22 @@ public class DatabaseManager implements IDatabase, IUserRepository {
     }
 
     private void initialize() {
-        try (Connection connection = getConnection()) {
-            schemaInitializer.initialize(connection);
-        } catch (SQLException e) {
-            System.out.println("[DB] Cannot initialize database: " + e.getMessage());
+        int attempts = 3;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try (Connection connection = getConnection()) {
+                schemaInitializer.initialize(connection);
+                return;
+            } catch (SQLException e) {
+                System.out.println("[DB] Cannot initialize database (attempt " + attempt + "/" + attempts + "): " + e.getMessage());
+                if (attempt < attempts) {
+                    try {
+                        Thread.sleep(2000L);
+                    } catch (InterruptedException interruptedException) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -340,7 +353,13 @@ public class DatabaseManager implements IDatabase, IUserRepository {
     }
 
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(url, user, password);
+        Properties props = new Properties();
+        props.setProperty("user", user);
+        props.setProperty("password", password);
+        props.setProperty("connectTimeout", "15");
+        props.setProperty("socketTimeout", "30");
+        props.setProperty("tcpKeepAlive", "true");
+        return DriverManager.getConnection(url, props);
     }
 
     private void loadPostgresDriver() {

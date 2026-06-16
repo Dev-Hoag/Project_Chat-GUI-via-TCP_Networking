@@ -1,7 +1,6 @@
 package server;
 
 import common.Protocol;
-import server.decorator.LoggingHandler;
 import server.decorator.SocketHandler;
 import server.decorator.ValidationHandler;
 import server.observer.ServerBroadcaster;
@@ -70,6 +69,8 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
                     handleFileDownload(message);
                 } else if (Protocol.AVATAR_SET.equals(message.getCommand())) {
                     profileService.handleAvatarSet(this, message);
+                } else if (Protocol.AVATAR_REQUEST.equals(message.getCommand())) {
+                    profileService.handleAvatarRequest(this, message);
                 } else {
                     router.handle(this, message);
                 }
@@ -187,7 +188,7 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         this.username = user.username;
         this.displayName = user.displayName;
         this.avatarPath = user.avatarPath;
-        this.sendHandler = new ValidationHandler(new LoggingHandler(baseSender, username));
+        this.sendHandler = new ValidationHandler(baseSender);
         broadcaster.subscribe(this);
         router.sendInitialState(this);
         return true;

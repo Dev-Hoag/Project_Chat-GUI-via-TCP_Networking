@@ -38,6 +38,7 @@ public final class Protocol {
     public static final String PRIVATE_MSG = "PRIVATE_MSG";
     public static final String PRIVATE_MSG_DELIVER = "PRIVATE_MSG_DELIVER";
     public static final String PRIVATE_MSG_SENT = "PRIVATE_MSG_SENT";
+    public static final String FORWARD_MSG = "FORWARD_MSG";
     public static final String PRIVATE_LIST = "PRIVATE_LIST";
     public static final String TYPING_START = "TYPING_START";
     public static final String TYPING_STOP = "TYPING_STOP";
@@ -53,6 +54,8 @@ public final class Protocol {
     public static final String AVATAR_SET = "AVATAR_SET";
     public static final String AVATAR_SET_SUCCESS = "AVATAR_SET_SUCCESS";
     public static final String AVATAR_SET_ERROR = "AVATAR_SET_ERROR";
+    public static final String AVATAR_REQUEST = "AVATAR_REQUEST";
+    public static final String AVATAR_DELIVER = "AVATAR_DELIVER";
 
     public static final String LOBBY_ROOM_ID = "lobby";
     public static final String LOBBY_ROOM_NAME = "Lobby";

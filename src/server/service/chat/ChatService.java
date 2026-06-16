@@ -1,6 +1,7 @@
 package server.service.chat;
 
 import common.ConversationType;
+import common.MessageType;
 import common.Protocol;
 import server.ClientHandler;
 import server.core.ChatRoom;
@@ -161,6 +162,28 @@ public class ChatService {
         databaseManager.saveTextMessage(sender.getUsername(), ConversationType.PRIVATE, conversationId, receiver, content);
     }
 
+    public void handleForwardMessage(ClientHandler sender, String sourceConversationType, String sourceConversationId,
+                                     String sourceMessageType, String content, String fileName, String filePath,
+                                     String targetConversationType, String targetConversationId, String receiver) {
+        if (targetConversationType == null || targetConversationType.trim().isEmpty()) {
+            sender.send(Protocol.build(Protocol.ERROR, "Target conversation type is required"));
+            return;
+        }
+
+        if (!canForwardTarget(sender.getUsername(), targetConversationType, targetConversationId, receiver)) {
+            sender.send(Protocol.build(Protocol.ERROR, "Cannot forward to this conversation"));
+            return;
+        }
+
+        if (MessageType.FILE.equals(sourceMessageType)) {
+            forwardFileMessage(sender, targetConversationType, targetConversationId, receiver, fileName, filePath);
+            return;
+        }
+
+        forwardTextMessage(sender, sourceConversationType, sourceConversationId, targetConversationType,
+                targetConversationId, receiver, content);
+    }
+
     public void handleTyping(ClientHandler sender, String conversationType, String conversationId, String receiver, boolean typing) {
         if (ConversationType.PRIVATE.equals(conversationType)) {
             if (receiver == null || receiver.trim().isEmpty() || receiver.equals(sender.getUsername())) {
@@ -266,6 +289,99 @@ public class ChatService {
         }
         ChatRoom room = clientManager.getRoom(conversationId);
         return room != null && room.hasMember(username);
+    }
+
+    private boolean canForwardTarget(String username, String conversationType, String conversationId, String receiver) {
+        return canSendToConversation(username, conversationType, conversationId, receiver);
+    }
+
+    private void forwardTextMessage(ClientHandler sender, String sourceConversationType, String sourceConversationId,
+                                    String targetConversationType, String targetConversationId, String receiver,
+                                    String content) {
+        if (content == null || content.trim().isEmpty()) {
+            sender.send(Protocol.build(Protocol.ERROR, "Forward content is empty"));
+            return;
+        }
+
+        String time = currentTime();
+        String forwardPrefix = "[Forwarded from " + sourceConversationType + ":" + sourceConversationId + "] ";
+        String forwardedContent = forwardPrefix + content;
+
+        if (ConversationType.PRIVATE.equals(targetConversationType)) {
+            ClientHandler receiverHandler = clientManager.getClient(receiver);
+            if (receiverHandler == null) {
+                sender.send(Protocol.build(Protocol.ERROR, "User is offline"));
+                return;
+            }
+            receiverHandler.send(Protocol.build(Protocol.PRIVATE_MSG_DELIVER, sender.getUsername(), forwardedContent, time));
+            sender.send(Protocol.build(Protocol.PRIVATE_MSG_SENT, receiver, forwardedContent, time));
+            String conversationId = Protocol.privateConversationId(sender.getUsername(), receiver);
+            databaseManager.savePrivateConversation(conversationId, sender.getUsername(), receiver);
+            databaseManager.saveTextMessage(sender.getUsername(), ConversationType.PRIVATE, conversationId, receiver, forwardedContent);
+            return;
+        }
+
+        ChatRoom room = clientManager.getRoom(targetConversationId);
+        if (room == null || !room.hasMember(sender.getUsername())) {
+            sender.send(Protocol.build(Protocol.ERROR, "Cannot forward to this room"));
+            return;
+        }
+        String line = Protocol.build(Protocol.ROOM_MSG_DELIVER, targetConversationId, sender.getUsername(), forwardedContent, time);
+        for (String member : room.getMembers()) {
+            if (sender.getUsername().equals(member)) {
+                continue;
+            }
+            ClientHandler target = clientManager.getClient(member);
+            if (target != null) {
+                target.send(line);
+            }
+        }
+        sender.send(Protocol.build(Protocol.ROOM_MSG_SENT, targetConversationId, forwardedContent, time));
+        String conversationType = Protocol.LOBBY_ROOM_ID.equals(targetConversationId) ? ConversationType.LOBBY : ConversationType.ROOM;
+        databaseManager.saveTextMessage(sender.getUsername(), conversationType, targetConversationId, null, forwardedContent);
+    }
+
+    private void forwardFileMessage(ClientHandler sender, String targetConversationType, String targetConversationId,
+                                    String receiver, String fileName, String filePath) {
+        if (fileName == null || fileName.trim().isEmpty() || filePath == null || filePath.trim().isEmpty()) {
+            sender.send(Protocol.build(Protocol.ERROR, "Forward file metadata is missing"));
+            return;
+        }
+
+        try {
+            File file = sender.getFileService().getDownloadFile(filePath);
+            String time = currentTime();
+            if (ConversationType.PRIVATE.equals(targetConversationType)) {
+                ClientHandler receiverHandler = clientManager.getClient(receiver);
+                if (receiverHandler == null) {
+                    sender.send(Protocol.build(Protocol.ERROR, "User is offline"));
+                    return;
+                }
+                String line = Protocol.build(Protocol.FILE_DELIVER, ConversationType.PRIVATE,
+                        Protocol.privateConversationId(sender.getUsername(), receiver), sender.getUsername(),
+                        fileName, file.getPath(), time);
+                sender.send(line);
+                receiverHandler.send(line);
+                databaseManager.savePrivateConversation(Protocol.privateConversationId(sender.getUsername(), receiver),
+                        sender.getUsername(), receiver);
+                databaseManager.saveFileMessage(sender.getUsername(), ConversationType.PRIVATE,
+                        Protocol.privateConversationId(sender.getUsername(), receiver), receiver, fileName, file.getPath());
+                return;
+            }
+
+            ChatRoom room = clientManager.getRoom(targetConversationId);
+            if (room == null || !room.hasMember(sender.getUsername())) {
+                sender.send(Protocol.build(Protocol.ERROR, "Cannot forward file to this room"));
+                return;
+            }
+            String line = Protocol.build(Protocol.FILE_DELIVER, targetConversationType, targetConversationId,
+                    sender.getUsername(), fileName, file.getPath(), time);
+            room.notifyMessageReceived(line);
+            String conversationType = Protocol.LOBBY_ROOM_ID.equals(targetConversationId) ? ConversationType.LOBBY : ConversationType.ROOM;
+            databaseManager.saveFileMessage(sender.getUsername(), conversationType, targetConversationId, null, fileName, file.getPath());
+        } catch (Exception e) {
+            sender.send(Protocol.build(Protocol.ERROR, "Cannot forward file: " + e.getMessage()));
+        }
     }
 
     private void broadcastJoin(String username) {

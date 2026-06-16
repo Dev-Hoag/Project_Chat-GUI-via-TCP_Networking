@@ -58,6 +58,13 @@ public class MessageRouter {
         chatService.handlePrivateMessage(sender, receiver, content);
     }
 
+    public void handleForwardMessage(ClientHandler sender, String sourceConversationType, String sourceConversationId,
+                                     String sourceMessageType, String content, String fileName, String filePath,
+                                     String targetConversationType, String targetConversationId, String receiver) {
+        chatService.handleForwardMessage(sender, sourceConversationType, sourceConversationId, sourceMessageType,
+                content, fileName, filePath, targetConversationType, targetConversationId, receiver);
+    }
+
     public void handleTyping(ClientHandler sender, String conversationType, String conversationId, String receiver, boolean typing) {
         chatService.handleTyping(sender, conversationType, conversationId, receiver, typing);
     }

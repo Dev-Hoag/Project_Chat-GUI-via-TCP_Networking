@@ -37,4 +37,26 @@ public class ProfileService {
         handler.send(Protocol.build(Protocol.AVATAR_SET_SUCCESS, storedAvatar.path));
         router.broadcastUserList();
     }
+
+    public void handleAvatarRequest(ClientHandler handler, Protocol.ParsedMessage message) throws Exception {
+        if (handler.getUsername() == null) {
+            handler.send(Protocol.build(Protocol.ERROR, "You must login first"));
+            return;
+        }
+        String avatarPath = message.field(0).trim();
+        if (avatarPath.isEmpty()) {
+            handler.send(Protocol.build(Protocol.ERROR, "Avatar path is required"));
+            return;
+        }
+
+        java.io.File avatarFile = avatarService.getAvatarFile(avatarPath);
+        synchronized (handler) {
+            Protocol.writeLine(handler.getOutputStream(), Protocol.build(
+                    Protocol.AVATAR_DELIVER,
+                    avatarPath,
+                    avatarFile.getName(),
+                    String.valueOf(avatarFile.length())));
+            avatarService.writeAvatarToOutput(avatarFile, handler.getOutputStream());
+        }
+    }
 }

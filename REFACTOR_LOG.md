@@ -31,6 +31,8 @@
 
 ## 2026-06-16
 
+- Added client-side right-click forward flow for text/file messages with a destination picker over rooms and users.
+- Added `FORWARD_MSG` on the server so a message can be forwarded to another room or private conversation.
 - Fixed room typing payload to use the same `TYPING_STATUS` shape as private chat, so the client can render "typing..." correctly.
 - Fixed room message realtime delivery by broadcasting room chat directly to members and sending a sender ack with `ROOM_MSG_SENT`.
 - Added real-time typing indicators with `TYPING_START`, `TYPING_STOP`, and `TYPING_STATUS`.

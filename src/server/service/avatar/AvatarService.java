@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -45,6 +46,33 @@ public class AvatarService {
             }
         }
         return new StoredAvatar(savedFile.getPath(), fileSize);
+    }
+
+    public File getAvatarFile(String storedPath) throws IOException {
+        if (storedPath == null || storedPath.trim().isEmpty()) {
+            throw new IOException("Avatar not found");
+        }
+        File requested = new File(storedPath);
+        File canonicalBase = avatarDir.getCanonicalFile();
+        File canonicalFile = requested.getCanonicalFile();
+        if (!canonicalFile.getPath().startsWith(canonicalBase.getPath() + File.separator)) {
+            throw new IOException("Invalid avatar path");
+        }
+        if (!canonicalFile.exists() || !canonicalFile.isFile()) {
+            throw new IOException("Avatar not found");
+        }
+        return canonicalFile;
+    }
+
+    public void writeAvatarToOutput(File file, OutputStream outputStream) throws IOException {
+        byte[] buffer = new byte[8192];
+        try (java.io.FileInputStream fileInputStream = new java.io.FileInputStream(file)) {
+            int read;
+            while ((read = fileInputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+            outputStream.flush();
+        }
     }
 
     private boolean isAllowedExtension(String extension) {
