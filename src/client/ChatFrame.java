@@ -67,6 +67,8 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     private final JCheckBox privateModeCheckBox = new JCheckBox("Private");
     private final JLabel statusLabel = new JLabel("Connecting...");
     private final JLabel typingLabel = new JLabel(" ");
+    private final JLabel replyBannerLabel = new JLabel(" ");
+    private final JButton clearReplyButton = new JButton("Cancel");
     private final JLabel profileLabel = new JLabel("Profile: ");
     private final JLabel avatarPreviewLabel = new JLabel();
     private final DefaultListModel<UserItem> onlineUsersModel = new DefaultListModel<UserItem>();
@@ -83,6 +85,9 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     private final Set<String> loadedHistory = new HashSet<String>();
     private final Set<String> requestedAvatarPaths = new HashSet<String>();
     private final JPopupMenu messagePopupMenu = new JPopupMenu();
+    private final JMenuItem replyMenuItem = new JMenuItem("Reply");
+    private final JMenuItem forwardMenuItem = new JMenuItem("Forward");
+    private final JMenuItem downloadMenuItem = new JMenuItem("Download");
     private final File avatarCacheDir = new File("client_files/avatars");
     private final Timer typingStopTimer = new Timer(1200, e -> stopTyping(true));
 
@@ -90,6 +95,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     private boolean connected;
     private String displayName;
     private String avatarPath;
+    private ChatEntry pendingReplyEntry;
     private boolean typingActive;
     private TypingTarget activeTypingTarget;
     private ChatEntry popupEntry;
@@ -245,6 +251,12 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
         JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        replyBannerLabel.setForeground(new Color(120, 84, 20));
+        JPanel replyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        replyPanel.add(replyBannerLabel);
+        clearReplyButton.addActionListener(e -> clearReplyTarget());
+        replyPanel.add(clearReplyButton);
+        bottomPanel.add(replyPanel, BorderLayout.NORTH);
         bottomPanel.add(messageInput, BorderLayout.CENTER);
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         buttonPanel.add(privateModeCheckBox);
@@ -298,6 +310,8 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                 socketService.close();
             }
         });
+
+        updateReplyBanner();
     }
 
     private void handleServerMessage(Protocol.ParsedMessage message) {
@@ -341,14 +355,26 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     message.field(1),
                     message.field(2),
                     message.field(2),
-                    message.field(3) + " " + message.field(1) + ": " + message.field(2)));
+                    buildMessageDisplayText(
+                            message.field(3) + " " + message.field(1) + ": ",
+                            message.field(2),
+                            replySender(message),
+                            replyMessageType(message),
+                            replyContent(message),
+                            replyFileName(message))));
         } else if (Protocol.ROOM_MSG_SENT.equals(command)) {
             addEntry(message.field(0), ChatEntry.text(
                     message.field(0),
                     username,
                     message.field(1),
                     message.field(2),
-                    message.field(2) + " Me: " + message.field(1)));
+                    buildMessageDisplayText(
+                            message.field(2) + " Me: ",
+                            message.field(1),
+                            replySender(message),
+                            replyMessageType(message),
+                            replyContent(message),
+                            replyFileName(message))));
         } else if (Protocol.PRIVATE_MSG_DELIVER.equals(command)) {
             String sender = message.field(0);
             String conversationId = Protocol.privateConversationId(username, sender);
@@ -358,7 +384,13 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     conversationId,
                     sender,
                     message.field(1),
-                    message.field(2)));
+                    buildMessageDisplayText(
+                            message.field(2) + " " + sender + ": ",
+                            message.field(1),
+                            replySender(message),
+                            replyMessageType(message),
+                            replyContent(message),
+                            replyFileName(message))));
         } else if (Protocol.PRIVATE_MSG_SENT.equals(command)) {
             String receiver = message.field(0);
             String conversationId = Protocol.privateConversationId(username, receiver);
@@ -368,7 +400,13 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     conversationId,
                     username,
                     message.field(1),
-                    message.field(2)));
+                    buildMessageDisplayText(
+                            message.field(2) + " Me: ",
+                            message.field(1),
+                            replySender(message),
+                            replyMessageType(message),
+                            replyContent(message),
+                            replyFileName(message))));
         } else if (Protocol.HISTORY.equals(command)) {
             appendHistory(message);
         } else if (Protocol.FILE_DELIVER.equals(command)) {
@@ -396,8 +434,9 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         }
         try {
             ConversationItem conversation = getSelectedConversation();
+            ChatEntry replyEntry = pendingReplyEntry;
             if (ConversationType.PRIVATE.equals(conversation.type)) {
-                socketService.send(Protocol.build(Protocol.PRIVATE_MSG, conversation.receiver, text));
+                socketService.send(buildReplyAwareMessage(Protocol.PRIVATE_MSG, conversation.receiver, text, replyEntry));
             } else if (privateModeCheckBox.isSelected()) {
                 String receiver = getSelectedSingleUser();
                 if (receiver == null) {
@@ -405,12 +444,13 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     return;
                 }
                 addPrivateConversation(receiver, true);
-                socketService.send(Protocol.build(Protocol.PRIVATE_MSG, receiver, text));
+                socketService.send(buildReplyAwareMessage(Protocol.PRIVATE_MSG, receiver, text, replyEntry));
             } else {
-                socketService.send(Protocol.build(Protocol.ROOM_MSG, conversation.id, text));
+                socketService.send(buildReplyAwareMessage(Protocol.ROOM_MSG, conversation.id, text, replyEntry));
             }
             stopTyping(true);
             messageInput.setText("");
+            clearReplyTarget();
         } catch (IOException e) {
             addSystemToCurrent("Cannot send message: " + e.getMessage());
         }
@@ -569,7 +609,8 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         String conversationId = message.field(1);
         String sender = message.field(2);
         String messageType = message.field(4);
-        String content = message.field(5);
+        StoredReply storedReply = decodeStoredReply(message.field(5));
+        String content = storedReply == null ? message.field(5) : storedReply.content;
         String fileName = message.field(6);
         String filePath = message.field(7);
         String time = message.field(8);
@@ -588,7 +629,16 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     conversationId,
                     sender,
                     content,
-                    "[History] " + time + " " + sender + ": " + content));
+                    buildMessageDisplayText("[History] " + time + " " + sender + ": ",
+                            content,
+                            storedReply == null ? "" : storedReply.sender,
+                            storedReply == null ? "" : storedReply.messageType,
+                            storedReply == null ? "" : storedReply.content,
+                            storedReply == null ? "" : storedReply.fileName),
+                    storedReply == null ? "" : storedReply.sender,
+                    storedReply == null ? "" : storedReply.messageType,
+                    storedReply == null ? "" : storedReply.content,
+                    storedReply == null ? "" : storedReply.fileName));
         }
     }
 
@@ -739,13 +789,12 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     }
 
     private void buildMessagePopupMenu() {
-        JMenuItem forwardItem = new JMenuItem("Forward");
-        forwardItem.addActionListener(e -> forwardSelectedMessage());
-        messagePopupMenu.add(forwardItem);
-
-        JMenuItem downloadItem = new JMenuItem("Download");
-        downloadItem.addActionListener(e -> downloadSelectedFile());
-        messagePopupMenu.add(downloadItem);
+        replyMenuItem.addActionListener(e -> replyToSelectedMessage());
+        forwardMenuItem.addActionListener(e -> forwardSelectedMessage());
+        downloadMenuItem.addActionListener(e -> downloadSelectedFile());
+        messagePopupMenu.add(replyMenuItem);
+        messagePopupMenu.add(forwardMenuItem);
+        messagePopupMenu.add(downloadMenuItem);
     }
 
     private void handleChatMouseEvent(MouseEvent e) {
@@ -770,8 +819,21 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private void showMessagePopup(MouseEvent e, ChatEntry entry) {
         popupEntry = entry;
-        messagePopupMenu.getComponent(1).setEnabled(entry.file);
+        replyMenuItem.setEnabled(!entry.system);
+        forwardMenuItem.setEnabled(!entry.system);
+        downloadMenuItem.setEnabled(entry.file);
         messagePopupMenu.show(chatPane, e.getX(), e.getY());
+    }
+
+    private void replyToSelectedMessage() {
+        ChatEntry entry = popupEntry != null ? popupEntry : getEntryAtCaret();
+        if (entry == null || entry.system) {
+            addSystemToCurrent("Select a message to reply");
+            return;
+        }
+        pendingReplyEntry = entry;
+        updateReplyBanner();
+        messageInput.requestFocusInWindow();
     }
 
     private void forwardSelectedMessage() {
@@ -804,6 +866,91 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         int offset = chatPane.getCaretPosition();
         int line = getLineAtOffset(offset);
         return renderedLines.get(line);
+    }
+
+    private void clearReplyTarget() {
+        pendingReplyEntry = null;
+        updateReplyBanner();
+    }
+
+    private void updateReplyBanner() {
+        if (pendingReplyEntry == null) {
+            replyBannerLabel.setText(" ");
+            return;
+        }
+        replyBannerLabel.setText("Replying to " + summarizeReplyTarget(pendingReplyEntry));
+    }
+
+    private String summarizeReplyTarget(ChatEntry entry) {
+        if (entry == null) {
+            return "";
+        }
+        if (entry.file) {
+            return entry.sender + " | file: " + entry.fileName;
+        }
+        String text = entry.content == null ? "" : entry.content.trim();
+        if (text.length() > 48) {
+            text = text.substring(0, 45) + "...";
+        }
+        return entry.sender + ": " + text;
+    }
+
+    private String buildReplyAwareMessage(String command, String target, String text, ChatEntry replyEntry) {
+        if (replyEntry == null) {
+            return Protocol.build(command, target, text);
+        }
+        return Protocol.build(command,
+                target,
+                text,
+                replyEntry.sender == null ? "" : replyEntry.sender,
+                replyEntry.messageType == null ? "" : replyEntry.messageType,
+                replyEntry.content == null ? "" : replyEntry.content,
+                replyEntry.fileName == null ? "" : replyEntry.fileName);
+    }
+
+    private String replySender(Protocol.ParsedMessage message) {
+        return message.getFields().size() > 3 ? message.field(3) : "";
+    }
+
+    private String replyMessageType(Protocol.ParsedMessage message) {
+        return message.getFields().size() > 4 ? message.field(4) : "";
+    }
+
+    private String replyContent(Protocol.ParsedMessage message) {
+        return message.getFields().size() > 5 ? message.field(5) : "";
+    }
+
+    private String replyFileName(Protocol.ParsedMessage message) {
+        return message.getFields().size() > 6 ? message.field(6) : "";
+    }
+
+    private StoredReply decodeStoredReply(String value) {
+        if (value == null || !value.startsWith(Protocol.REPLY_STORAGE_PREFIX)) {
+            return null;
+        }
+        String payload = value.substring(Protocol.REPLY_STORAGE_PREFIX.length());
+        String[] parts = payload.split("\\|", -1);
+        if (parts.length < 5) {
+            return null;
+        }
+        return new StoredReply(
+                Protocol.decode(parts[0]),
+                Protocol.decode(parts[1]),
+                Protocol.decode(parts[2]),
+                Protocol.decode(parts[3]),
+                Protocol.decode(parts[4]));
+    }
+
+    private String buildMessageDisplayText(String prefix, String content,
+                                           String replySender, String replyMessageType,
+                                           String replyContent, String replyFileName) {
+        StringBuilder builder = new StringBuilder();
+        if (replySender != null && !replySender.trim().isEmpty() && replyMessageType != null && !replyMessageType.trim().isEmpty()) {
+            builder.append(buildReplyBlock(new StoredReply(replySender, replyMessageType, replyContent, replyFileName)));
+        }
+        builder.append(prefix);
+        builder.append(content == null ? "" : content);
+        return builder.toString();
     }
 
     private void forwardEntry(ChatEntry entry) {
@@ -892,6 +1039,9 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     insert(document, entry.fileName, fileStyle());
                     insert(document, System.lineSeparator(), normalStyle());
                 } else {
+                    if (hasReplyMeta(entry)) {
+                        insert(document, buildReplyBlock(entry), replyStyle());
+                    }
                     insert(document, entry.text + System.lineSeparator(), normalStyle());
                 }
                 line++;
@@ -917,6 +1067,13 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         StyleConstants.setForeground(set, new Color(0, 92, 204));
         StyleConstants.setUnderline(set, true);
         StyleConstants.setBold(set, true);
+        return set;
+    }
+
+    private SimpleAttributeSet replyStyle() {
+        SimpleAttributeSet set = new SimpleAttributeSet();
+        StyleConstants.setForeground(set, new Color(142, 93, 20));
+        StyleConstants.setItalic(set, true);
         return set;
     }
 
@@ -1109,6 +1266,54 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         return conversationType + ":" + conversationId;
     }
 
+    private boolean hasReplyMeta(ChatEntry entry) {
+        return entry != null
+                && entry.replySender != null && !entry.replySender.trim().isEmpty()
+                && entry.replyMessageType != null && !entry.replyMessageType.trim().isEmpty();
+    }
+
+    private String buildReplyBlock(ChatEntry entry) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("↪ Reply to ").append(entry.replySender);
+        if (MessageType.FILE.equals(entry.replyMessageType)) {
+            builder.append(" [file]");
+            if (entry.replyFileName != null && !entry.replyFileName.trim().isEmpty()) {
+                builder.append(" ").append(entry.replyFileName);
+            }
+        } else {
+            String preview = entry.replyContent == null ? "" : entry.replyContent.trim();
+            if (preview.length() > 60) {
+                preview = preview.substring(0, 57) + "...";
+            }
+            if (!preview.isEmpty()) {
+                builder.append(": ").append(preview);
+            }
+        }
+        builder.append(System.lineSeparator());
+        return builder.toString();
+    }
+
+    private String buildReplyBlock(StoredReply reply) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("↪ Reply to ").append(reply.sender);
+        if (MessageType.FILE.equals(reply.messageType)) {
+            builder.append(" [file]");
+            if (reply.fileName != null && !reply.fileName.trim().isEmpty()) {
+                builder.append(" ").append(reply.fileName);
+            }
+        } else {
+            String preview = reply.content == null ? "" : reply.content.trim();
+            if (preview.length() > 60) {
+                preview = preview.substring(0, 57) + "...";
+            }
+            if (!preview.isEmpty()) {
+                builder.append(": ").append(preview);
+            }
+        }
+        builder.append(System.lineSeparator());
+        return builder.toString();
+    }
+
     private ImageIcon loadAvatarIcon(String path, int size) {
         String normalized = path == null ? "" : path.trim();
         if (normalized.isEmpty()) {
@@ -1238,6 +1443,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private static class ChatEntry {
         final boolean file;
+        final boolean system;
         final String text;
         final String prefix;
         final String fileName;
@@ -1247,10 +1453,21 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         final String sender;
         final String messageType;
         final String content;
+        final String replySender;
+        final String replyMessageType;
+        final String replyContent;
+        final String replyFileName;
 
-        private ChatEntry(boolean file, String text, String prefix, String fileName, String filePath,
+        private ChatEntry(boolean file, boolean system, String text, String prefix, String fileName, String filePath,
                           String conversationType, String conversationId, String sender, String messageType, String content) {
+            this(file, system, text, prefix, fileName, filePath, conversationType, conversationId, sender, messageType, content, "", "", "", "");
+        }
+
+        private ChatEntry(boolean file, boolean system, String text, String prefix, String fileName, String filePath,
+                          String conversationType, String conversationId, String sender, String messageType, String content,
+                          String replySender, String replyMessageType, String replyContent, String replyFileName) {
             this.file = file;
+            this.system = system;
             this.text = text;
             this.prefix = prefix;
             this.fileName = fileName;
@@ -1260,21 +1477,54 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             this.sender = sender;
             this.messageType = messageType;
             this.content = content;
+            this.replySender = replySender;
+            this.replyMessageType = replyMessageType;
+            this.replyContent = replyContent;
+            this.replyFileName = replyFileName;
         }
 
         static ChatEntry text(String conversationType, String conversationId, String sender, String content, String displayText) {
-            return new ChatEntry(false, displayText, "", "", "",
-                    conversationType, conversationId, sender, MessageType.TEXT, content == null ? "" : content);
+            return text(conversationType, conversationId, sender, content, displayText, null, null, null, null);
+        }
+
+        static ChatEntry text(String conversationType, String conversationId, String sender, String content, String displayText,
+                              String replySender, String replyMessageType, String replyContent, String replyFileName) {
+            return new ChatEntry(false, false, displayText, "", "", "",
+                    conversationType, conversationId, sender, MessageType.TEXT, content == null ? "" : content,
+                    replySender == null ? "" : replySender,
+                    replyMessageType == null ? "" : replyMessageType,
+                    replyContent == null ? "" : replyContent,
+                    replyFileName == null ? "" : replyFileName);
         }
 
         static ChatEntry file(String conversationType, String conversationId, String sender,
                               String prefix, String fileName, String filePath) {
-            return new ChatEntry(true, "", prefix, fileName == null ? "" : fileName, filePath == null ? "" : filePath,
+            return new ChatEntry(true, false, "", prefix, fileName == null ? "" : fileName, filePath == null ? "" : filePath,
                     conversationType, conversationId, sender, MessageType.FILE, "");
         }
 
         static ChatEntry system(String text) {
-            return new ChatEntry(false, text, "", "", "", "system", "system", "system", MessageType.TEXT, text == null ? "" : text);
+            return new ChatEntry(false, true, text, "", "", "", "system", "system", "system", MessageType.TEXT, text == null ? "" : text);
+        }
+    }
+
+    private static class StoredReply {
+        final String sender;
+        final String messageType;
+        final String content;
+        final String fileName;
+        final String actualContent;
+
+        StoredReply(String sender, String messageType, String content, String fileName) {
+            this(sender, messageType, content, fileName, "");
+        }
+
+        StoredReply(String sender, String messageType, String content, String fileName, String actualContent) {
+            this.sender = sender;
+            this.messageType = messageType;
+            this.content = content;
+            this.fileName = fileName;
+            this.actualContent = actualContent;
         }
     }
 

@@ -56,6 +56,7 @@ public final class Protocol {
     public static final String AVATAR_SET_ERROR = "AVATAR_SET_ERROR";
     public static final String AVATAR_REQUEST = "AVATAR_REQUEST";
     public static final String AVATAR_DELIVER = "AVATAR_DELIVER";
+    public static final String REPLY_STORAGE_PREFIX = "[[REPLY]]";
 
     public static final String LOBBY_ROOM_ID = "lobby";
     public static final String LOBBY_ROOM_NAME = "Lobby";

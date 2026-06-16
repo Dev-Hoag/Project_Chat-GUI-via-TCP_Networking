@@ -115,7 +115,8 @@ public class ChatService {
         sendRoomListToAllRoomMembers();
     }
 
-    public void handleRoomMessage(ClientHandler sender, String roomId, String content) {
+    public void handleRoomMessage(ClientHandler sender, String roomId, String content,
+                                  String replySender, String replyMessageType, String replyContent, String replyFileName) {
         if (content.trim().isEmpty()) {
             return;
         }
@@ -126,7 +127,8 @@ public class ChatService {
         }
         String conversationType = Protocol.LOBBY_ROOM_ID.equals(roomId) ? ConversationType.LOBBY : ConversationType.ROOM;
         String time = currentTime();
-        String line = Protocol.build(Protocol.ROOM_MSG_DELIVER, roomId, sender.getUsername(), content, time);
+        String line = buildRoomMessageLine(Protocol.ROOM_MSG_DELIVER, roomId, sender.getUsername(), content, time,
+                replySender, replyMessageType, replyContent, replyFileName);
         for (String member : room.getMembers()) {
             if (sender.getUsername().equals(member)) {
                 continue;
@@ -136,11 +138,14 @@ public class ChatService {
                 target.send(line);
             }
         }
-        sender.send(Protocol.build(Protocol.ROOM_MSG_SENT, roomId, content, time));
-        databaseManager.saveTextMessage(sender.getUsername(), conversationType, roomId, null, content);
+        sender.send(buildRoomMessageLine(Protocol.ROOM_MSG_SENT, roomId, sender.getUsername(), content, time,
+                replySender, replyMessageType, replyContent, replyFileName));
+        databaseManager.saveTextMessage(sender.getUsername(), conversationType, roomId, null,
+                decorateStoredContent(content, replySender, replyMessageType, replyContent, replyFileName));
     }
 
-    public void handlePrivateMessage(ClientHandler sender, String receiver, String content) {
+    public void handlePrivateMessage(ClientHandler sender, String receiver, String content,
+                                     String replySender, String replyMessageType, String replyContent, String replyFileName) {
         if (receiver == null || receiver.trim().isEmpty() || content.trim().isEmpty()) {
             return;
         }
@@ -156,10 +161,13 @@ public class ChatService {
 
         String conversationId = Protocol.privateConversationId(sender.getUsername(), receiver);
         String time = currentTime();
-        receiverHandler.send(Protocol.build(Protocol.PRIVATE_MSG_DELIVER, sender.getUsername(), content, time));
-        sender.send(Protocol.build(Protocol.PRIVATE_MSG_SENT, receiver, content, time));
+        receiverHandler.send(buildPrivateMessageLine(Protocol.PRIVATE_MSG_DELIVER, sender.getUsername(), content, time,
+                replySender, replyMessageType, replyContent, replyFileName));
+        sender.send(buildPrivateMessageLine(Protocol.PRIVATE_MSG_SENT, receiver, content, time,
+                replySender, replyMessageType, replyContent, replyFileName));
         databaseManager.savePrivateConversation(conversationId, sender.getUsername(), receiver);
-        databaseManager.saveTextMessage(sender.getUsername(), ConversationType.PRIVATE, conversationId, receiver, content);
+        databaseManager.saveTextMessage(sender.getUsername(), ConversationType.PRIVATE, conversationId, receiver,
+                decorateStoredContent(content, replySender, replyMessageType, replyContent, replyFileName));
     }
 
     public void handleForwardMessage(ClientHandler sender, String sourceConversationType, String sourceConversationId,
@@ -390,6 +398,31 @@ public class ChatService {
 
     private void broadcastLeave(String username) {
         broadcaster.notifyUserLeft(username);
+    }
+
+    private String buildRoomMessageLine(String command, String roomId, String sender, String content, String time,
+                                        String replySender, String replyMessageType, String replyContent, String replyFileName) {
+        return Protocol.build(command, roomId, sender, content, time,
+                nullToEmpty(replySender), nullToEmpty(replyMessageType), nullToEmpty(replyContent), nullToEmpty(replyFileName));
+    }
+
+    private String buildPrivateMessageLine(String command, String senderOrReceiver, String content, String time,
+                                           String replySender, String replyMessageType, String replyContent, String replyFileName) {
+        return Protocol.build(command, senderOrReceiver, content, time,
+                nullToEmpty(replySender), nullToEmpty(replyMessageType), nullToEmpty(replyContent), nullToEmpty(replyFileName));
+    }
+
+    private String decorateStoredContent(String content, String replySender, String replyMessageType,
+                                         String replyContent, String replyFileName) {
+        if (replySender == null || replySender.trim().isEmpty() || replyMessageType == null || replyMessageType.trim().isEmpty()) {
+            return content;
+        }
+        return Protocol.REPLY_STORAGE_PREFIX
+                + Protocol.encode(nullToEmpty(replySender)) + "|"
+                + Protocol.encode(nullToEmpty(replyMessageType)) + "|"
+                + Protocol.encode(nullToEmpty(replyContent)) + "|"
+                + Protocol.encode(nullToEmpty(replyFileName)) + "|"
+                + Protocol.encode(nullToEmpty(content));
     }
 
     private String buildUserListPayload() {

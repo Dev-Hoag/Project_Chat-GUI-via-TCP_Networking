@@ -50,12 +50,14 @@ public class MessageRouter {
         chatService.onClientDisconnected(username);
     }
 
-    public void handleRoomMessage(ClientHandler sender, String roomId, String content) {
-        chatService.handleRoomMessage(sender, roomId, content);
+    public void handleRoomMessage(ClientHandler sender, String roomId, String content,
+                                  String replySender, String replyMessageType, String replyContent, String replyFileName) {
+        chatService.handleRoomMessage(sender, roomId, content, replySender, replyMessageType, replyContent, replyFileName);
     }
 
-    public void handlePrivateMessage(ClientHandler sender, String receiver, String content) {
-        chatService.handlePrivateMessage(sender, receiver, content);
+    public void handlePrivateMessage(ClientHandler sender, String receiver, String content,
+                                     String replySender, String replyMessageType, String replyContent, String replyFileName) {
+        chatService.handlePrivateMessage(sender, receiver, content, replySender, replyMessageType, replyContent, replyFileName);
     }
 
     public void handleForwardMessage(ClientHandler sender, String sourceConversationType, String sourceConversationId,

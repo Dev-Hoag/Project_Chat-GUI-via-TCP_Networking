@@ -16,6 +16,7 @@ public class PrivateMessageStrategy implements MessageStrategy {
     public void handle(ClientHandler sender, Protocol.ParsedMessage message) {
         String receiver = message.field(0);
         String content = message.field(1);
-        router.handlePrivateMessage(sender, receiver, content);
+        router.handlePrivateMessage(sender, receiver, content,
+                message.field(2), message.field(3), message.field(4), message.field(5));
     }
 }

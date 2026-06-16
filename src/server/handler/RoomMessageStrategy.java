@@ -16,6 +16,7 @@ public class RoomMessageStrategy implements MessageStrategy {
     public void handle(ClientHandler sender, Protocol.ParsedMessage message) {
         String roomId = message.field(0);
         String content = message.field(1);
-        router.handleRoomMessage(sender, roomId, content);
+        router.handleRoomMessage(sender, roomId, content,
+                message.field(2), message.field(3), message.field(4), message.field(5));
     }
 }
