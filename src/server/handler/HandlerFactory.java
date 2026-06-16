@@ -17,6 +17,8 @@ public class HandlerFactory {
         strategies.put(Protocol.CREATE_ROOM, new CreateRoomStrategy(router));
         strategies.put(Protocol.JOIN_ROOM, new JoinRoomStrategy(router));
         strategies.put(Protocol.LEAVE_ROOM, new LeaveRoomStrategy(router));
+        strategies.put(Protocol.TYPING_START, new TypingStrategy(router));
+        strategies.put(Protocol.TYPING_STOP, new TypingStrategy(router));
     }
     
     // Lấy strategy cho command

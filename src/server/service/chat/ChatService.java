@@ -8,11 +8,13 @@ import server.observer.ServerBroadcaster;
 import server.service.client.IClientManager;
 import server.service.database.IDatabase;
 import server.service.file.IFileService;
+import server.service.user.IUserRepository.UserRecord;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,13 +34,20 @@ public class ChatService {
     }
 
     public void sendInitialState(ClientHandler handler) {
-        handler.send(Protocol.build(Protocol.LOGIN_SUCCESS, handler.getUsername()));
+        handler.send(Protocol.build(Protocol.LOGIN_SUCCESS,
+                handler.getUsername(),
+                handler.getDisplayName() == null ? handler.getUsername() : handler.getDisplayName(),
+                handler.getAvatarPath() == null ? "" : handler.getAvatarPath()));
         restoreConversations(handler.getUsername());
         sendHistory(handler, ConversationType.LOBBY, Protocol.LOBBY_ROOM_ID);
         broadcastJoin(handler.getUsername());
         broadcastUserList();
         sendRoomListToAllRoomMembers();
         sendPrivateList(handler);
+    }
+
+    public void broadcastUserList() {
+        broadcaster.notifyUserListUpdated(buildUserListPayload());
     }
 
     public void handleFile(ClientHandler sender, IFileService fileService, String conversationType, String conversationId,
@@ -115,8 +124,18 @@ public class ChatService {
             return;
         }
         String conversationType = Protocol.LOBBY_ROOM_ID.equals(roomId) ? ConversationType.LOBBY : ConversationType.ROOM;
-        String line = Protocol.build(Protocol.ROOM_MSG_DELIVER, roomId, sender.getUsername(), content, currentTime());
-        room.notifyMessageReceived(line);
+        String time = currentTime();
+        String line = Protocol.build(Protocol.ROOM_MSG_DELIVER, roomId, sender.getUsername(), content, time);
+        for (String member : room.getMembers()) {
+            if (sender.getUsername().equals(member)) {
+                continue;
+            }
+            ClientHandler target = clientManager.getClient(member);
+            if (target != null) {
+                target.send(line);
+            }
+        }
+        sender.send(Protocol.build(Protocol.ROOM_MSG_SENT, roomId, content, time));
         databaseManager.saveTextMessage(sender.getUsername(), conversationType, roomId, null, content);
     }
 
@@ -140,6 +159,30 @@ public class ChatService {
         sender.send(Protocol.build(Protocol.PRIVATE_MSG_SENT, receiver, content, time));
         databaseManager.savePrivateConversation(conversationId, sender.getUsername(), receiver);
         databaseManager.saveTextMessage(sender.getUsername(), ConversationType.PRIVATE, conversationId, receiver, content);
+    }
+
+    public void handleTyping(ClientHandler sender, String conversationType, String conversationId, String receiver, boolean typing) {
+        if (ConversationType.PRIVATE.equals(conversationType)) {
+            if (receiver == null || receiver.trim().isEmpty() || receiver.equals(sender.getUsername())) {
+                return;
+            }
+            ClientHandler receiverHandler = clientManager.getClient(receiver);
+            if (receiverHandler == null) {
+                return;
+            }
+            receiverHandler.send(Protocol.build(Protocol.TYPING_STATUS,
+                    ConversationType.PRIVATE,
+                    Protocol.privateConversationId(sender.getUsername(), receiver),
+                    sender.getUsername(),
+                    String.valueOf(typing)));
+            return;
+        }
+
+        ChatRoom room = clientManager.getRoom(conversationId);
+        if (room == null || !room.hasMember(sender.getUsername())) {
+            return;
+        }
+        room.notifyTypingStatusChanged(sender.getUsername(), typing);
     }
 
     public void handleCreateRoom(ClientHandler sender, String roomName, String csvUsers) {
@@ -233,8 +276,13 @@ public class ChatService {
         broadcaster.notifyUserLeft(username);
     }
 
-    private void broadcastUserList() {
-        broadcaster.notifyUserListUpdated(String.join(",", clientManager.getOnlineUsers()));
+    private String buildUserListPayload() {
+        return clientManager.getAllClients().stream()
+                .sorted(Comparator.comparing(ClientHandler::getUsername, String.CASE_INSENSITIVE_ORDER))
+                .map(handler -> normalize(handler.getUsername()) + "^" +
+                        normalize(handler.getDisplayName() == null ? handler.getUsername() : handler.getDisplayName()) + "^" +
+                        normalize(handler.getAvatarPath()))
+                .collect(Collectors.joining(","));
     }
 
     private void sendRoomListToAllRoomMembers() {
@@ -273,6 +321,10 @@ public class ChatService {
     }
 
     private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private String normalize(String value) {
         return value == null ? "" : value;
     }
 }

@@ -2,6 +2,8 @@ package server.service.database;
 
 import common.MessageType;
 import server.service.database.IDatabase;
+import server.service.user.IUserRepository;
+import server.service.user.IUserRepository.UserRecord;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -16,7 +18,7 @@ import java.util.List;
 /**
  * Repository-style persistence layer for messages, rooms, and private conversations.
  */
-public class DatabaseManager implements IDatabase {
+public class DatabaseManager implements IDatabase, IUserRepository {
     private final String url;
     private final String user;
     private final String password;
@@ -42,6 +44,117 @@ public class DatabaseManager implements IDatabase {
 
     public boolean isConfigured() {
         return configured;
+    }
+
+    public boolean usernameExists(String username) {
+        if (!configured) {
+            return false;
+        }
+        String sql = "SELECT 1 FROM users WHERE username = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot check username: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public UserRecord getUserByUsername(String username) {
+        if (!configured) {
+            return null;
+        }
+        String sql = "SELECT id, username, display_name, avatar_path, is_active, created_at, updated_at, last_login_at " +
+                "FROM users WHERE username = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return mapUser(resultSet);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot load user: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public UserRecord createUser(String username, String displayName, String avatarPath) {
+        if (!configured) {
+            return null;
+        }
+        String sql = "INSERT INTO users (username, display_name, avatar_path) VALUES (?, ?, ?) " +
+                "RETURNING id, username, display_name, avatar_path, is_active, created_at, updated_at, last_login_at";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            statement.setString(2, displayName);
+            statement.setString(3, avatarPath);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return mapUser(resultSet);
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot create user: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void updateLastLogin(String username) {
+        updateUserTimestamp(username, "last_login_at = CURRENT_TIMESTAMP");
+    }
+
+    public void updateAvatarPath(String username, String avatarPath) {
+        if (!configured) {
+            return;
+        }
+        String sql = "UPDATE users SET avatar_path = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, avatarPath);
+            statement.setString(2, username);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot update avatar: " + e.getMessage());
+        }
+    }
+
+    public void updateDisplayName(String username, String displayName) {
+        if (!configured) {
+            return;
+        }
+        String sql = "UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, displayName);
+            statement.setString(2, username);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot update display name: " + e.getMessage());
+        }
+    }
+
+    public java.util.List<UserRecord> getAllUsers() {
+        if (!configured) {
+            return Collections.emptyList();
+        }
+        String sql = "SELECT id, username, display_name, avatar_path, is_active, created_at, updated_at, last_login_at FROM users ORDER BY username";
+        java.util.List<UserRecord> users = new ArrayList<UserRecord>();
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                users.add(mapUser(resultSet));
+            }
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot load users: " + e.getMessage());
+        }
+        return users;
     }
 
     public void saveTextMessage(String sender, String conversationType, String conversationId, String receiver, String content) {
@@ -235,6 +348,33 @@ public class DatabaseManager implements IDatabase {
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {
             System.out.println("[DB] PostgreSQL JDBC driver not found. Make sure lib/postgresql-jdbc.jar is in the classpath.");
+        }
+    }
+
+    private UserRecord mapUser(ResultSet resultSet) throws SQLException {
+        return new UserRecord(
+                resultSet.getLong("id"),
+                resultSet.getString("username"),
+                resultSet.getString("display_name"),
+                resultSet.getString("avatar_path"),
+                resultSet.getBoolean("is_active"),
+                resultSet.getTimestamp("created_at"),
+                resultSet.getTimestamp("updated_at"),
+                resultSet.getTimestamp("last_login_at")
+        );
+    }
+
+    private void updateUserTimestamp(String username, String clause) {
+        if (!configured) {
+            return;
+        }
+        String sql = "UPDATE users SET " + clause + ", updated_at = CURRENT_TIMESTAMP WHERE username = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("[DB] Cannot update user timestamp: " + e.getMessage());
         }
     }
 

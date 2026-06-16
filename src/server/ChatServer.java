@@ -5,12 +5,16 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import server.observer.ServerBroadcaster;
 import server.router.MessageRouter;
+import server.service.auth.AuthService;
 import server.service.client.ClientManager;
 import server.service.client.IClientManager;
 import server.service.database.DatabaseManager;
 import server.service.database.IDatabase;
+import server.service.avatar.AvatarService;
 import server.service.file.FileService;
 import server.service.file.IFileService;
+import server.service.profile.ProfileService;
+import server.service.user.IUserRepository;
 
 public class ChatServer {
     // Port mặc định nếu không truyền tham số khi chạy server.
@@ -22,16 +26,20 @@ public class ChatServer {
         int port = parsePort(args);
         IClientManager clientManager = new ClientManager();
         IDatabase databaseManager = new DatabaseManager();
+        IUserRepository userRepository = (IUserRepository) databaseManager;
         IFileService fileService = new FileService();
         ServerBroadcaster broadcaster = new ServerBroadcaster();
+        AvatarService avatarService = new AvatarService();
+        AuthService authService = new AuthService(userRepository);
         MessageRouter router = new MessageRouter(clientManager, databaseManager, broadcaster);
+        ProfileService profileService = new ProfileService(userRepository, avatarService, router);
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("TCPChatGUI server started on port " + port);
             while (true) {
                 Socket socket = serverSocket.accept();
                 try {
-                    ClientHandler handler = new ClientHandler(socket, clientManager, router, fileService, broadcaster);
+                    ClientHandler handler = new ClientHandler(socket, clientManager, router, fileService, broadcaster, authService, profileService);
                     Thread thread = new Thread(handler, "client-" + socket.getRemoteSocketAddress());
                     thread.start();
                 } catch (IOException e) {

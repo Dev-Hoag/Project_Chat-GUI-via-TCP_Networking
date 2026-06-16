@@ -7,8 +7,12 @@ import server.decorator.ValidationHandler;
 import server.observer.ServerBroadcaster;
 import server.observer.ServerObserver;
 import server.router.MessageRouter;
+import server.service.auth.AuthException;
+import server.service.auth.AuthService;
 import server.service.client.IClientManager;
 import server.service.file.IFileService;
+import server.service.profile.ProfileService;
+import server.service.user.IUserRepository.UserRecord;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,25 +20,31 @@ import java.io.OutputStream;
 import java.net.Socket;
 
 public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
-    // Mỗi ClientHandler xử lý một kết nối socket của một client.
     private final Socket socket;
     private final IClientManager clientManager;
     private final MessageRouter router;
     private final IFileService fileService;
     private final ServerBroadcaster broadcaster;
+    private final AuthService authService;
+    private final ProfileService profileService;
     private final InputStream inputStream;
     private final OutputStream outputStream;
     private final SocketHandler baseSender;
     private SocketHandler sendHandler;
     private volatile String username;
+    private volatile String displayName;
+    private volatile String avatarPath;
     private volatile boolean running = true;
 
-    public ClientHandler(Socket socket, IClientManager clientManager, MessageRouter router, IFileService fileService, ServerBroadcaster broadcaster) throws IOException {
+    public ClientHandler(Socket socket, IClientManager clientManager, MessageRouter router, IFileService fileService,
+                         ServerBroadcaster broadcaster, AuthService authService, ProfileService profileService) throws IOException {
         this.socket = socket;
         this.clientManager = clientManager;
         this.router = router;
         this.fileService = fileService;
         this.broadcaster = broadcaster;
+        this.authService = authService;
+        this.profileService = profileService;
         this.inputStream = socket.getInputStream();
         this.outputStream = socket.getOutputStream();
         this.baseSender = new SocketHandler() {
@@ -47,9 +57,8 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
 
     @Override
     public void run() {
-        // Vòng lặp chính của thread client: đăng nhập trước, rồi đọc command từ client liên tục.
         try {
-            if (!login()) {
+            if (!authenticate()) {
                 return;
             }
             while (running) {
@@ -59,6 +68,8 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
                     handleFileMeta(message);
                 } else if (Protocol.FILE_DOWNLOAD.equals(message.getCommand())) {
                     handleFileDownload(message);
+                } else if (Protocol.AVATAR_SET.equals(message.getCommand())) {
+                    profileService.handleAvatarSet(this, message);
                 } else {
                     router.handle(this, message);
                 }
@@ -95,6 +106,18 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         return username;
     }
 
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public String getAvatarPath() {
+        return avatarPath;
+    }
+
+    public void setAvatarPath(String avatarPath) {
+        this.avatarPath = avatarPath;
+    }
+
     public InputStream getInputStream() {
         return inputStream;
     }
@@ -107,31 +130,69 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         return fileService;
     }
 
-    // Xử lý login đầu tiên: client phải gửi LOGIN|username ngay khi kết nối.
-    private boolean login() throws IOException {
-        String line = Protocol.readLine(inputStream);
-        Protocol.ParsedMessage message = Protocol.parse(line);
-        if (!Protocol.LOGIN.equals(message.getCommand())) {
-            send(Protocol.build(Protocol.ERROR, "First command must be LOGIN"));
-            return false;
+    private boolean authenticate() throws IOException {
+        while (running) {
+            String line = Protocol.readLine(inputStream);
+            Protocol.ParsedMessage message = Protocol.parse(line);
+            String command = message.getCommand();
+            if (Protocol.LOGIN.equals(command)) {
+                if (handleLogin(message)) {
+                    return true;
+                }
+                continue;
+            }
+            if (Protocol.REGISTER.equals(command)) {
+                if (handleRegister(message)) {
+                    return true;
+                }
+                continue;
+            }
+            send(Protocol.build(Protocol.LOGIN_ERROR, "First command must be LOGIN or REGISTER"));
         }
+        return false;
+    }
+
+    private boolean handleLogin(Protocol.ParsedMessage message) {
         String requestedUsername = message.field(0).trim();
-        if (!isValidUsername(requestedUsername)) {
-            send(Protocol.build(Protocol.ERROR, "Username must be 3-20 letters, numbers, underscore or dash"));
+        try {
+            UserRecord user = authService.login(requestedUsername);
+            return finalizeAuthentication(user);
+        } catch (AuthException e) {
+            send(Protocol.build(Protocol.LOGIN_ERROR, e.getMessage()));
             return false;
         }
-        if (!clientManager.addClient(requestedUsername, this)) {
-            send(Protocol.build(Protocol.ERROR, "Username already exists"));
+    }
+
+    private boolean handleRegister(Protocol.ParsedMessage message) {
+        String requestedUsername = message.field(0).trim();
+        String requestedDisplayName = message.field(1);
+        try {
+            UserRecord user = authService.register(requestedUsername, requestedDisplayName, null);
+            return finalizeAuthentication(user);
+        } catch (AuthException e) {
+            send(Protocol.build(Protocol.REGISTER_ERROR, e.getMessage()));
             return false;
         }
-        username = requestedUsername;
+    }
+
+    private boolean finalizeAuthentication(UserRecord user) {
+        if (user == null) {
+            send(Protocol.build(Protocol.LOGIN_ERROR, "Authentication failed"));
+            return false;
+        }
+        if (!clientManager.addClient(user.username, this)) {
+            send(Protocol.build(Protocol.LOGIN_ERROR, "Username already exists online"));
+            return false;
+        }
+        this.username = user.username;
+        this.displayName = user.displayName;
+        this.avatarPath = user.avatarPath;
         this.sendHandler = new ValidationHandler(new LoggingHandler(baseSender, username));
         broadcaster.subscribe(this);
         router.sendInitialState(this);
         return true;
     }
 
-    // Xử lý metadata file khi client gửi file lên server.
     private void handleFileMeta(Protocol.ParsedMessage message) throws Exception {
         String conversationType = message.field(0);
         String conversationId = message.field(1);
@@ -143,10 +204,6 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
 
     private void handleFileDownload(Protocol.ParsedMessage message) throws Exception {
         router.handleFileDownload(this, message.field(0), message.field(1));
-    }
-
-    private boolean isValidUsername(String value) {
-        return value != null && value.matches("[A-Za-z0-9_-]{3,20}");
     }
 
     @Override

@@ -44,6 +44,18 @@ public class DatabaseSchemaInitializer {
                     "user_b TEXT NOT NULL," +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
                     ")");
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS users (" +
+                    "id BIGSERIAL PRIMARY KEY," +
+                    "username TEXT NOT NULL UNIQUE," +
+                    "display_name TEXT NOT NULL," +
+                    "avatar_path TEXT," +
+                    "is_active BOOLEAN NOT NULL DEFAULT TRUE," +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "last_login_at TIMESTAMP" +
+                    ")");
+            statement.executeUpdate("ALTER TABLE users DROP COLUMN IF EXISTS password_hash");
+            statement.executeUpdate("ALTER TABLE users DROP COLUMN IF EXISTS password_salt");
         }
     }
 }

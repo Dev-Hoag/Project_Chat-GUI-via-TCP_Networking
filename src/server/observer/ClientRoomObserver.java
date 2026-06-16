@@ -1,5 +1,6 @@
 package server.observer;
 
+import common.ConversationType;
 import common.Protocol;
 import server.ClientHandler;
 import server.core.ChatRoom;
@@ -30,6 +31,12 @@ public class ClientRoomObserver implements RoomObserver {
     @Override
     public void onMemberLeft(String roomId, String username) {
         sendRoomUsers(roomId);
+    }
+
+    @Override
+    public void onTypingStatusChanged(String roomId, String username, boolean typing) {
+        String conversationType = Protocol.LOBBY_ROOM_ID.equals(roomId) ? ConversationType.LOBBY : ConversationType.ROOM;
+        clientHandler.send(Protocol.build(Protocol.TYPING_STATUS, conversationType, roomId, username, String.valueOf(typing)));
     }
 
     private void sendRoomUsers(String roomId) {

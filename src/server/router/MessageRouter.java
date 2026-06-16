@@ -2,8 +2,6 @@ package server.router;
 
 import common.Protocol;
 import server.ClientHandler;
-import server.command.CommandQueue;
-import server.command.RouterCommand;
 import server.handler.HandlerFactory;
 import server.handler.MessageStrategy;
 import server.observer.ServerBroadcaster;
@@ -14,7 +12,6 @@ import server.service.file.IFileService;
 
 public class MessageRouter {
     private final HandlerFactory handlerFactory;
-    private final CommandQueue commandQueue = new CommandQueue();
     private final ChatService chatService;
 
     public MessageRouter(IClientManager clientManager, IDatabase databaseManager, ServerBroadcaster broadcaster) {
@@ -33,7 +30,11 @@ public class MessageRouter {
             sender.send(Protocol.build(Protocol.ERROR, "Unsupported command: " + command));
             return;
         }
-        commandQueue.executeAndQueue(new RouterCommand(command, () -> strategy.handle(sender, message)));
+        try {
+            strategy.handle(sender, message);
+        } catch (Exception e) {
+            sender.send(Protocol.build(Protocol.ERROR, e.getMessage() == null ? "Cannot handle command: " + command : e.getMessage()));
+        }
     }
 
     public void handleFile(ClientHandler sender, String conversationType, String conversationId, String receiver,
@@ -57,6 +58,10 @@ public class MessageRouter {
         chatService.handlePrivateMessage(sender, receiver, content);
     }
 
+    public void handleTyping(ClientHandler sender, String conversationType, String conversationId, String receiver, boolean typing) {
+        chatService.handleTyping(sender, conversationType, conversationId, receiver, typing);
+    }
+
     public void handleCreateRoom(ClientHandler sender, String roomName, String csvUsers) {
         chatService.handleCreateRoom(sender, roomName, csvUsers);
     }
@@ -71,5 +76,9 @@ public class MessageRouter {
 
     public void sendHistory(ClientHandler handler, String conversationType, String conversationId) {
         chatService.sendHistory(handler, conversationType, conversationId);
+    }
+
+    public void broadcastUserList() {
+        chatService.broadcastUserList();
     }
 }

@@ -17,3 +17,25 @@
 
 - `server.ChatRoom` still exists as a legacy class, but the runtime flow now uses `server.core.ChatRoom`.
 - `CommandQueue` now preserves order and executes on a single worker thread.
+
+## 2026-06-09
+
+- Added auth flow with `REGISTER` and password-based `LOGIN` using `AuthService`.
+- Added user persistence with `IUserRepository` and a `users` table for hashed credentials and profile data.
+- Added avatar upload flow with `AVATAR_SET` and dedicated `AvatarService` / `ProfileService`.
+- Updated client login UI to support login/register mode, password entry, display name, and optional avatar selection.
+- Added avatar upload from chat UI and a small emoji picker for inserting Unicode emoji into messages.
+- Added online user payload metadata so client can render avatar thumbnails in the user list and profile header.
+- Added avatar preview rendering and cached thumbnail loading on the client side.
+- Kept chat/file protocol line-based and UTF-8 encoded, so emoji text is supported without changing the transport model.
+
+## 2026-06-16
+
+- Fixed room typing payload to use the same `TYPING_STATUS` shape as private chat, so the client can render "typing..." correctly.
+- Fixed room message realtime delivery by broadcasting room chat directly to members and sending a sender ack with `ROOM_MSG_SENT`.
+- Added real-time typing indicators with `TYPING_START`, `TYPING_STOP`, and `TYPING_STATUS`.
+- Routed typing events through `MessageRouter` and a dedicated `TypingStrategy` so the router stays thin.
+- Updated `ChatRoom` and `RoomObserver` so room typing state is pushed through the existing observer flow.
+- Updated `ClientSocketService` to send typing events and surface typing updates to the UI listener.
+- Added typing debounce and auto-stop logic in `ChatFrame` so the UI does not spam the server while the user is typing.
+- Added a live `đang soạn...` label in the chat window that follows the currently selected conversation.

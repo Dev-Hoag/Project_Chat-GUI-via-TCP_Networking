@@ -15,6 +15,10 @@ import java.util.List;
 public final class Protocol {
     public static final String LOGIN = "LOGIN";
     public static final String LOGIN_SUCCESS = "LOGIN_SUCCESS";
+    public static final String LOGIN_ERROR = "LOGIN_ERROR";
+    public static final String REGISTER = "REGISTER";
+    public static final String REGISTER_SUCCESS = "REGISTER_SUCCESS";
+    public static final String REGISTER_ERROR = "REGISTER_ERROR";
     public static final String ERROR = "ERROR";
     public static final String USER_LIST = "USER_LIST";
     public static final String JOIN = "JOIN";
@@ -29,11 +33,15 @@ public final class Protocol {
     public static final String LEAVE_ROOM = "LEAVE_ROOM";
     public static final String ROOM_MSG = "ROOM_MSG";
     public static final String ROOM_MSG_DELIVER = "ROOM_MSG_DELIVER";
+    public static final String ROOM_MSG_SENT = "ROOM_MSG_SENT";
 
     public static final String PRIVATE_MSG = "PRIVATE_MSG";
     public static final String PRIVATE_MSG_DELIVER = "PRIVATE_MSG_DELIVER";
     public static final String PRIVATE_MSG_SENT = "PRIVATE_MSG_SENT";
     public static final String PRIVATE_LIST = "PRIVATE_LIST";
+    public static final String TYPING_START = "TYPING_START";
+    public static final String TYPING_STOP = "TYPING_STOP";
+    public static final String TYPING_STATUS = "TYPING_STATUS";
 
     public static final String HISTORY_REQUEST = "HISTORY_REQUEST";
     public static final String HISTORY = "HISTORY";
@@ -42,10 +50,14 @@ public final class Protocol {
     public static final String FILE_DELIVER = "FILE_DELIVER";
     public static final String FILE_DOWNLOAD = "FILE_DOWNLOAD";
     public static final String FILE_DOWNLOAD_META = "FILE_DOWNLOAD_META";
+    public static final String AVATAR_SET = "AVATAR_SET";
+    public static final String AVATAR_SET_SUCCESS = "AVATAR_SET_SUCCESS";
+    public static final String AVATAR_SET_ERROR = "AVATAR_SET_ERROR";
 
     public static final String LOBBY_ROOM_ID = "lobby";
     public static final String LOBBY_ROOM_NAME = "Lobby";
     public static final int MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+    public static final int MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024;
 
     private Protocol() {
     }

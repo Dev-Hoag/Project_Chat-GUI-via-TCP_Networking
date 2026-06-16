@@ -5,4 +5,5 @@ public interface RoomObserver {
     void onMessageReceived(String roomId, String message);
     void onMemberJoined(String roomId, String username);
     void onMemberLeft(String roomId, String username);
+    void onTypingStatusChanged(String roomId, String username, boolean typing);
 }

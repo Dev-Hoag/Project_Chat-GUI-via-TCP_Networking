@@ -4,6 +4,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -59,7 +61,7 @@ public final class DatabaseConfig {
 
     private static Map<String, String> loadDotEnv() {
         Map<String, String> values = new HashMap<String, String>();
-        File file = new File(".env");
+        File file = locateDotEnv();
         if (!file.exists()) {
             return values;
         }
@@ -82,6 +84,37 @@ public final class DatabaseConfig {
             System.out.println("[WARN] Cannot read .env file: " + e.getMessage());
         }
         return values;
+    }
+
+    private static File locateDotEnv() {
+        for (File start : new File[] { new File(System.getProperty("user.dir")), resolveCodeSourceDir() }) {
+            File current = start;
+            while (current != null) {
+                File candidate = new File(current, ".env");
+                if (candidate.exists()) {
+                    return candidate;
+                }
+                current = current.getParentFile();
+            }
+        }
+        File fallback = new File(".env");
+        if (fallback.exists()) {
+            return fallback;
+        }
+        return fallback;
+    }
+
+    private static File resolveCodeSourceDir() {
+        try {
+            URL location = DatabaseConfig.class.getProtectionDomain().getCodeSource().getLocation();
+            if (location == null) {
+                return new File(System.getProperty("user.dir"));
+            }
+            File codeSource = new File(location.toURI());
+            return codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+        } catch (URISyntaxException e) {
+            return new File(System.getProperty("user.dir"));
+        }
     }
 
     private static String stripQuotes(String value) {

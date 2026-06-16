@@ -39,6 +39,12 @@ public class ChatRoom {
             observer.onMessageReceived(roomId, message);
         }
     }
+
+    public void notifyTypingStatusChanged(String username, boolean typing) {
+        for (RoomObserver observer : observers) {
+            observer.onTypingStatusChanged(roomId, username, typing);
+        }
+    }
     
     // Member management
     public void addMember(String username) {
