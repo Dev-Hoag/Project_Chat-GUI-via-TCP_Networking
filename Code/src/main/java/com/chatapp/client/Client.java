@@ -1,29 +1,46 @@
 package com.chatapp.client;
+import com.chatapp.config.AppConfig;
+
 import javax.swing.event.ListDataListener;
 import java.io.*;
 import java.net.*;
 
+/**
+ * Client Core — quản lý vòng đời kết nối TCP tới server.
+ *
+ * Cách dùng (Thành viên 3 - GUI gọi vào):
+ * <pre>
+ *   Client client = new Client("Hiếu", guiListener);
+ *   client.connect("localhost", 9999);   // gọi từ GUI thread
+ *   client.sendMessage("Xin chào!");     // gọi khi người dùng nhấn Gửi
+ *   client.disconnect();                 // gọi khi đóng cửa sổ
+ * </pre>
+ */
 public class Client {
-    private Socket socket;
+    private final String username; // Field tên đăng nhập người dùng
+    private final ClientEventListener eventListener; // Field lắng nghe kết nối đến server
+
+    private Socket socket; // Field socker dùng để kết nối đến server
     private BufferedReader in;
     private PrintWriter out;
+    private MessageSender sender;
     private Thread thread;
-    private String username;
-    private ClientEventListener eventListener;
 
-    public Client() {
+    public Client(String username, ClientEventListener eventListener) {
+        this.username;
+        this.eventListener;
     }
     public void setEventListener(ClientEventListener eventListener) {
         this.eventListener = eventListener;
     }
 
-    public void connect(String host, int port, String username) throws IOException {
-        this.username = username;
-        this.socket = new Socket(host, port);
-        this.in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        this.out = new PrintWriter(socket.getOutputStream(), true);
-        out.println(("JOIN|" + this.username));
-        startListening();
+    public void connect(String host, int port) throws IOException {
+        this.socket = new Socket();
+        socket.connect(new InetSocketAddress(host, port), AppConfig.CONNECT_TIMEOUT);
+        socket.setSoTimeout(AppConfig.READ_TIMEOUT);
+        this.in = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+        this.out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true);
+        this.sender = new Mes
     }
     public void sendMessage(String message) {
         if(out != null && message != null && !message.trim().isEmpty()) {
