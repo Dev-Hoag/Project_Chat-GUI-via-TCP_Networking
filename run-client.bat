@@ -1,11 +1,27 @@
 @echo off
-chcp 65001 > nul
+setlocal
 cd /d "%~dp0"
 
-if not exist out (
-    echo Folder out not found. Running compile first...
-    call compile.bat
+set "CP=target\classes;lib\postgresql-jdbc.jar"
+set "JAVA_EXE=javaw.exe"
+
+if defined JAVA_HOME if exist "%JAVA_HOME%\bin\javaw.exe" (
+  set "JAVA_EXE=%JAVA_HOME%\bin\javaw.exe"
 )
 
-echo Starting TCPChatGUI client...
-java -cp "out;lib\postgresql-jdbc.jar" client.ChatClient 127.0.0.1 5000
+if not exist "target\classes" (
+  echo [ERROR] Missing build output: target\classes
+  echo Please build the project first.
+  pause
+  exit /b 1
+)
+
+if not exist "lib\postgresql-jdbc.jar" (
+  echo [ERROR] Missing dependency: lib\postgresql-jdbc.jar
+  pause
+  exit /b 1
+)
+
+echo [INFO] Starting client...
+start "" /b "%JAVA_EXE%" -cp "%CP%" client.ChatClient 127.0.0.1 5001
+pause
