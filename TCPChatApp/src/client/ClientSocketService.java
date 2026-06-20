@@ -2,15 +2,10 @@ package client;
 
 import common.Protocol;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.Socket;
 
-public class ClientSocketService {
+public final class ClientSocketService {
     public static class AuthRequest {
         public final String command;
         public final String username;

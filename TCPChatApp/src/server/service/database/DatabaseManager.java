@@ -24,6 +24,7 @@ public class DatabaseManager implements IDatabase, IUserRepository {
     private final String user;
     private final String password;
     private final boolean configured;
+    private final DatabaseDialect dialect;
     private final DatabaseSchemaInitializer schemaInitializer;
 
     public DatabaseManager() {
@@ -32,14 +33,15 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         this.user = config.getUser();
         this.password = config.getPassword();
         this.configured = config.isConfigured();
+        this.dialect = config.getDialect();
         this.schemaInitializer = new DatabaseSchemaInitializer();
 
         if (!configured) {
-            System.out.println("[WARN] Supabase DB config is not fully configured. Server will run without DB persistence.");
+            System.out.println("[WARN] Database config is not fully configured. Server will run without DB persistence.");
             return;
         }
 
-        loadPostgresDriver();
+        loadJdbcDriver();
         initialize();
     }
 
@@ -88,6 +90,21 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         if (!configured) {
             return null;
         }
+        if (dialect == DatabaseDialect.MYSQL) {
+            String sql = "INSERT INTO users (username, display_name, avatar_path) VALUES (?, ?, ?)";
+            try (Connection connection = getConnection();
+                 PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, username);
+                statement.setString(2, displayName);
+                statement.setString(3, avatarPath);
+                statement.executeUpdate();
+            } catch (SQLException e) {
+                System.out.println("[DB] Cannot create user: " + e.getMessage());
+                return null;
+            }
+            return getUserByUsername(username);
+        }
+
         String sql = "INSERT INTO users (username, display_name, avatar_path) VALUES (?, ?, ?) " +
                 "RETURNING id, username, display_name, avatar_path, is_active, created_at, updated_at, last_login_at";
         try (Connection connection = getConnection();
@@ -171,9 +188,14 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         if (!configured) {
             return;
         }
-        String roomSql = "INSERT INTO rooms (room_id, room_name, created_by) VALUES (?, ?, ?) " +
+        String roomSql = dialect == DatabaseDialect.MYSQL
+                ? "INSERT INTO rooms (room_id, room_name, created_by) VALUES (?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE room_name = VALUES(room_name)"
+                : "INSERT INTO rooms (room_id, room_name, created_by) VALUES (?, ?, ?) " +
                 "ON CONFLICT (room_id) DO UPDATE SET room_name = EXCLUDED.room_name";
-        String memberSql = "INSERT INTO room_members (room_id, username) VALUES (?, ?) ON CONFLICT DO NOTHING";
+        String memberSql = dialect == DatabaseDialect.MYSQL
+                ? "INSERT IGNORE INTO room_members (room_id, username) VALUES (?, ?)"
+                : "INSERT INTO room_members (room_id, username) VALUES (?, ?) ON CONFLICT DO NOTHING";
         try (Connection connection = getConnection();
              PreparedStatement roomStatement = connection.prepareStatement(roomSql);
              PreparedStatement memberStatement = connection.prepareStatement(memberSql)) {
@@ -238,7 +260,9 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         if (!configured) {
             return;
         }
-        String sql = "INSERT INTO private_conversations (conversation_id, user_a, user_b) VALUES (?, ?, ?) ON CONFLICT DO NOTHING";
+        String sql = dialect == DatabaseDialect.MYSQL
+                ? "INSERT IGNORE INTO private_conversations (conversation_id, user_a, user_b) VALUES (?, ?, ?)"
+                : "INSERT INTO private_conversations (conversation_id, user_a, user_b) VALUES (?, ?, ?) ON CONFLICT DO NOTHING";
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, conversationId);
@@ -313,7 +337,7 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         int attempts = 3;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try (Connection connection = getConnection()) {
-                schemaInitializer.initialize(connection);
+                schemaInitializer.initialize(connection, dialect);
                 return;
             } catch (SQLException e) {
                 System.out.println("[DB] Cannot initialize database (attempt " + attempt + "/" + attempts + "): " + e.getMessage());
@@ -362,12 +386,24 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         return DriverManager.getConnection(url, props);
     }
 
-    private void loadPostgresDriver() {
+    private void loadJdbcDriver() {
+        String driverClass = dialect == DatabaseDialect.MYSQL
+                ? "com.mysql.cj.jdbc.Driver"
+                : "org.postgresql.Driver";
         try {
-            Class.forName("org.postgresql.Driver");
+            Class.forName(driverClass);
+            System.out.println("[DB] Using " + dialect.name() + " (" + maskJdbcUrl(url) + ")");
         } catch (ClassNotFoundException e) {
-            System.out.println("[DB] PostgreSQL JDBC driver not found. Make sure lib/postgresql-jdbc.jar is in the classpath.");
+            System.out.println("[DB] JDBC driver not found: " + driverClass);
         }
+    }
+
+    private String maskJdbcUrl(String jdbcUrl) {
+        if (jdbcUrl == null) {
+            return "";
+        }
+        int queryIndex = jdbcUrl.indexOf('?');
+        return queryIndex > 0 ? jdbcUrl.substring(0, queryIndex) : jdbcUrl;
     }
 
     private UserRecord mapUser(ResultSet resultSet) throws SQLException {

@@ -11,7 +11,7 @@ import server.service.auth.AuthService;
 import server.service.client.IClientManager;
 import server.service.file.IFileService;
 import server.service.profile.ProfileService;
-import server.service.user.IUserRepository.UserRecord;
+import server.service.user.IUserRepository;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,7 +36,7 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
     private volatile boolean running = true;
 
     public ClientHandler(Socket socket, IClientManager clientManager, MessageRouter router, IFileService fileService,
-                         ServerBroadcaster broadcaster, AuthService authService, ProfileService profileService) throws IOException {
+                         ServerBroadcaster broadcaster, AuthService authService, ProfileService profileService) throws IOException, IOException {
         this.socket = socket;
         this.clientManager = clientManager;
         this.router = router;
@@ -156,7 +156,7 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
     private boolean handleLogin(Protocol.ParsedMessage message) {
         String requestedUsername = message.field(0).trim();
         try {
-            UserRecord user = authService.login(requestedUsername);
+            IUserRepository.UserRecord user = authService.login(requestedUsername);
             return finalizeAuthentication(user);
         } catch (AuthException e) {
             send(Protocol.build(Protocol.LOGIN_ERROR, e.getMessage()));
@@ -168,7 +168,7 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         String requestedUsername = message.field(0).trim();
         String requestedDisplayName = message.field(1);
         try {
-            UserRecord user = authService.register(requestedUsername, requestedDisplayName, null);
+            IUserRepository.UserRecord user = authService.register(requestedUsername, requestedDisplayName, null);
             return finalizeAuthentication(user);
         } catch (AuthException e) {
             send(Protocol.build(Protocol.REGISTER_ERROR, e.getMessage()));
@@ -176,7 +176,7 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         }
     }
 
-    private boolean finalizeAuthentication(UserRecord user) {
+    private boolean finalizeAuthentication(IUserRepository.UserRecord user) {
         if (user == null) {
             send(Protocol.build(Protocol.LOGIN_ERROR, "Authentication failed"));
             return false;

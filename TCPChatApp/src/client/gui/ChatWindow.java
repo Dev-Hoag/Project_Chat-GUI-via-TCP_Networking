@@ -1,5 +1,12 @@
-package client;
+package client.gui;
 
+/**
+ * Cửa sổ chat chính của client.
+ * Triển khai {@link ClientSocketService.Listener} — nhận callback từ socket service
+ * và cập nhật UI qua {@link SwingUtilities#invokeLater(Runnable)}.
+ */
+import client.ClientSocketService;
+import client.FileSender;
 import common.ConversationType;
 import common.MessageType;
 import common.Protocol;
@@ -52,7 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class ChatFrame extends JFrame implements ClientSocketService.Listener {
+public class ChatWindow extends JFrame implements ClientSocketService.Listener {
     private final String username;
     private final ClientSocketService socketService;
     private final FileSender fileSender;
@@ -99,15 +106,23 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     private boolean typingActive;
     private TypingTarget activeTypingTarget;
     private ChatEntry popupEntry;
+    private File pendingAvatar;
 
-    public ChatFrame(String username, ClientSocketService socketService) {
+    public ChatWindow(String username, ClientSocketService socketService) {
+        this(username, socketService, null);
+    }
+
+    public ChatWindow(String username, ClientSocketService socketService, File pendingAvatar) {
         this.username = username;
         this.socketService = socketService;
+        this.pendingAvatar = pendingAvatar;
         this.fileSender = new FileSender(socketService);
-        setTitle("TCPChatGUI - " + username);
+        setTitle("TCP Chat — " + username);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(920, 620);
+        setMinimumSize(new Dimension(880, 600));
+        setSize(980, 680);
         setLocationRelativeTo(null);
+        AppTheme.styleFrame(getContentPane());
         if (!avatarCacheDir.exists()) {
             avatarCacheDir.mkdirs();
         }
@@ -144,7 +159,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     avatarFilesByPath.put(avatarPath, file);
                     requestedAvatarPaths.remove(avatarPath);
                     avatarIconCache.keySet().removeIf(key -> key.startsWith(avatarPath + "#"));
-                    if (avatarPath.equals(ChatFrame.this.avatarPath)) {
+                    if (avatarPath.equals(ChatWindow.this.avatarPath)) {
                         updateProfileAvatar(avatarPath);
                     }
                     onlineUserList.repaint();
@@ -177,7 +192,6 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             public void run() {
                 statusLabel.setText(status);
                 if ("Reconnected".equals(status)) {
-                    connected = true;
                     loadedHistory.clear();
                     typingUsersByConversation.clear();
                     requestedAvatarPaths.clear();
@@ -199,10 +213,16 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private void initUi() {
         chatPane.setEditable(false);
+        chatPane.setFocusable(false);
+        AppTheme.styleChatPane(chatPane);
         chatPane.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                handleChatMouseEvent(e);
+                if (e.isPopupTrigger()) {
+                    handleChatMouseEvent(e);
+                } else {
+                    messageInput.requestFocusInWindow();
+                }
             }
 
             @Override
@@ -224,6 +244,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         });
 
         conversationList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        conversationList.setCellRenderer(new ConversationItemRenderer());
         conversationList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 stopTyping(true);
@@ -233,49 +254,117 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             }
         });
 
-        JPanel leftPanel = new JPanel(new BorderLayout(6, 6));
-        leftPanel.setBorder(BorderFactory.createTitledBorder("Conversations"));
-        leftPanel.add(new JScrollPane(conversationList), BorderLayout.CENTER);
-        leftPanel.setPreferredSize(new Dimension(180, 400));
+        JPanel leftPanel = AppTheme.createSidebar("Hội thoại");
+        leftPanel.add(AppTheme.wrapList(conversationList), BorderLayout.CENTER);
+        leftPanel.setPreferredSize(new Dimension(200, 400));
 
-        JPanel rightPanel = new JPanel(new BorderLayout(6, 6));
-        rightPanel.setBorder(BorderFactory.createTitledBorder("Online Users"));
-        rightPanel.add(new JScrollPane(onlineUserList), BorderLayout.CENTER);
-        rightPanel.add(createRoomButton, BorderLayout.SOUTH);
-        rightPanel.setPreferredSize(new Dimension(180, 400));
+        JPanel rightPanel = AppTheme.createSidebar("Đang online");
+        rightPanel.add(AppTheme.wrapList(onlineUserList), BorderLayout.CENTER);
+        AppTheme.stylePrimaryButton(createRoomButton);
+        createRoomButton.setText("+ Tạo nhóm");
+        JPanel createRoomWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 8));
+        createRoomWrap.setOpaque(false);
+        createRoomWrap.add(createRoomButton);
+        rightPanel.add(createRoomWrap, BorderLayout.SOUTH);
+        rightPanel.setPreferredSize(new Dimension(210, 400));
 
-        JSplitPane centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, new JScrollPane(chatPane));
+        JScrollPane chatScroll = new JScrollPane(chatPane);
+        chatScroll.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 1, AppTheme.BORDER));
+        chatScroll.getViewport().setBackground(AppTheme.CHAT_BG);
+        chatScroll.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                messageInput.requestFocusInWindow();
+            }
+        });
+
+        JSplitPane centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, chatScroll);
         centerSplit.setResizeWeight(0);
+        centerSplit.setBorder(BorderFactory.createEmptyBorder());
+        centerSplit.setDividerSize(1);
+        centerSplit.setBackground(AppTheme.BORDER);
+
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, centerSplit, rightPanel);
         mainSplit.setResizeWeight(1);
+        mainSplit.setBorder(BorderFactory.createEmptyBorder());
+        mainSplit.setDividerSize(1);
+        mainSplit.setBackground(AppTheme.BORDER);
 
-        JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
-        bottomPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        replyBannerLabel.setForeground(new Color(120, 84, 20));
+        JPanel bottomPanel = new JPanel(new BorderLayout(10, 8));
+        bottomPanel.setBackground(AppTheme.SURFACE);
+        bottomPanel.setBorder(AppTheme.sectionBorder());
+
+        replyBannerLabel.setForeground(AppTheme.WARNING);
+        replyBannerLabel.setFont(AppTheme.smallFont());
         JPanel replyPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        replyPanel.setOpaque(false);
         replyPanel.add(replyBannerLabel);
+        AppTheme.styleGhostButton(clearReplyButton);
+        clearReplyButton.setText("Hủy");
         clearReplyButton.addActionListener(e -> clearReplyTarget());
         replyPanel.add(clearReplyButton);
         bottomPanel.add(replyPanel, BorderLayout.NORTH);
-        bottomPanel.add(messageInput, BorderLayout.CENTER);
+
+        AppTheme.styleInputField(messageInput);
+        messageInput.setToolTipText("Nhập tin nhắn tại đây rồi bấm Gửi hoặc Enter");
+        JPanel inputRow = new JPanel(new BorderLayout(8, 0));
+        inputRow.setOpaque(false);
+        inputRow.add(messageInput, BorderLayout.CENTER);
+        bottomPanel.add(inputRow, BorderLayout.CENTER);
+
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        buttonPanel.setOpaque(false);
+        privateModeCheckBox.setOpaque(false);
+        privateModeCheckBox.setForeground(AppTheme.TEXT_MUTED);
+        privateModeCheckBox.setFont(AppTheme.baseFont());
+
+        AppTheme.styleGhostButton(sendFileButton);
+        sendFileButton.setText("📎 Tệp");
+        AppTheme.styleGhostButton(emojiButton);
+        emojiButton.setText("😀");
+        AppTheme.styleGhostButton(avatarButton);
+        avatarButton.setText("Ảnh");
+        AppTheme.stylePrimaryButton(sendButton);
+        sendButton.setText("Gửi");
+
         buttonPanel.add(privateModeCheckBox);
         buttonPanel.add(sendFileButton);
+        buttonPanel.add(emojiButton);
+        buttonPanel.add(avatarButton);
         buttonPanel.add(sendButton);
         bottomPanel.add(buttonPanel, BorderLayout.EAST);
 
-        JPanel northPanel = new JPanel(new BorderLayout());
-        northPanel.add(statusLabel, BorderLayout.NORTH);
-        northPanel.add(typingLabel, BorderLayout.CENTER);
-        JPanel profilePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        avatarPreviewLabel.setPreferredSize(new Dimension(36, 36));
-        avatarPreviewLabel.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
-        profilePanel.add(avatarPreviewLabel);
+        JPanel northPanel = new JPanel(new BorderLayout(16, 0));
+        northPanel.setBackground(AppTheme.HEADER);
+        northPanel.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+
+        JLabel titleLabel = new JLabel("TCP Chat");
+        titleLabel.setFont(AppTheme.titleFont().deriveFont(16f));
+        titleLabel.setForeground(Color.WHITE);
+        northPanel.add(titleLabel, BorderLayout.WEST);
+
+        JPanel statusColumn = new JPanel();
+        statusColumn.setLayout(new BoxLayout(statusColumn, BoxLayout.Y_AXIS));
+        statusColumn.setOpaque(false);
+        AppTheme.styleStatusBar(statusLabel);
+        AppTheme.styleTypingLabel(typingLabel);
+        statusColumn.add(statusLabel);
+        statusColumn.add(typingLabel);
+        northPanel.add(statusColumn, BorderLayout.CENTER);
+
+        JPanel profilePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        profilePanel.setOpaque(false);
+        AppTheme.styleAvatarPreview(avatarPreviewLabel, 40);
+        AppTheme.styleProfileLabel(profileLabel);
         profilePanel.add(profileLabel);
-        northPanel.add(profilePanel, BorderLayout.SOUTH);
-        add(northPanel, BorderLayout.NORTH);
-        add(mainSplit, BorderLayout.CENTER);
-        add(bottomPanel, BorderLayout.SOUTH);
+        profilePanel.add(avatarPreviewLabel);
+        northPanel.add(profilePanel, BorderLayout.EAST);
+
+        getContentPane().setLayout(new BorderLayout());
+        getContentPane().setBackground(AppTheme.BACKGROUND);
+        getContentPane().add(northPanel, BorderLayout.NORTH);
+        getContentPane().add(mainSplit, BorderLayout.CENTER);
+        getContentPane().add(bottomPanel, BorderLayout.SOUTH);
 
         sendButton.addActionListener(e -> sendText());
         sendFileButton.addActionListener(e -> chooseAndSendFile());
@@ -300,10 +389,12 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             }
         });
 
-        buttonPanel.add(emojiButton);
-        buttonPanel.add(avatarButton);
-
         addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowOpened(java.awt.event.WindowEvent e) {
+                messageInput.requestFocusInWindow();
+            }
+
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
                 stopTyping(true);
@@ -312,6 +403,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         });
 
         updateReplyBanner();
+        SwingUtilities.invokeLater(() -> messageInput.requestFocusInWindow());
     }
 
     private void handleServerMessage(Protocol.ParsedMessage message) {
@@ -320,15 +412,18 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             displayName = message.field(1).trim().isEmpty() ? message.field(0) : message.field(1);
             avatarPath = message.field(2);
             statusLabel.setText("Logged in as " + displayName + " | room: lobby");
-            profileLabel.setText("Profile: " + displayName + (avatarPath.trim().isEmpty() ? "" : " | avatar: " + avatarPath));
+            profileLabel.setText(displayName + (avatarPath.trim().isEmpty() ? "" : "  •  avatar"));
             updateProfileAvatar(avatarPath);
             readyForHistory = true;
             connected = true;
             typingUsersByConversation.clear();
             typingLabel.setText(" ");
             requestSelectedConversationHistory();
+            uploadPendingAvatar();
         } else if (Protocol.LOGIN_ERROR.equals(command) || Protocol.REGISTER_ERROR.equals(command)) {
-            addSystemToCurrent("Auth error: " + message.field(0));
+            connected = false;
+            statusLabel.setText("Lỗi đăng nhập: " + message.field(0));
+            addSystemToCurrent("Lỗi đăng nhập: " + message.field(0));
         } else if (Protocol.ERROR.equals(command)) {
             addSystemToCurrent("Error: " + message.field(0));
         } else if (Protocol.REGISTER_SUCCESS.equals(command)) {
@@ -415,7 +510,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             addSystemToCurrent("Room " + message.field(0) + " users: " + message.field(1));
         } else if (Protocol.AVATAR_SET_SUCCESS.equals(command)) {
             avatarPath = message.field(0);
-            profileLabel.setText("Profile: " + displayName + (avatarPath.trim().isEmpty() ? "" : " | avatar: " + avatarPath));
+            profileLabel.setText(displayName + (avatarPath.trim().isEmpty() ? "" : "  •  avatar"));
             updateProfileAvatar(avatarPath);
             addSystemToCurrent("Avatar updated");
         } else if (Protocol.AVATAR_SET_ERROR.equals(command)) {
@@ -429,7 +524,7 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
             return;
         }
         if (!connected) {
-            addSystemToCurrent("Currently offline. Waiting for reconnect.");
+            addSystemToCurrent("Chưa kết nối máy chủ. Kiểm tra server và đăng nhập lại.");
             return;
         }
         try {
@@ -458,10 +553,10 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private void chooseAndSendFile() {
         if (!connected) {
-            addSystemToCurrent("Currently offline. Waiting for reconnect.");
+            addSystemToCurrent("Chưa kết nối máy chủ. Kiểm tra server và đăng nhập lại.");
             return;
         }
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = SafeFileChooser.create();
         int result = chooser.showOpenDialog(this);
         if (result != JFileChooser.APPROVE_OPTION) {
             return;
@@ -495,10 +590,10 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private void chooseAndSendAvatar() {
         if (!connected) {
-            addSystemToCurrent("Currently offline. Waiting for reconnect.");
+            addSystemToCurrent("Chưa kết nối máy chủ. Kiểm tra server và đăng nhập lại.");
             return;
         }
-        JFileChooser chooser = new JFileChooser();
+        JFileChooser chooser = SafeFileChooser.create();
         int result = chooser.showOpenDialog(this);
         if (result != JFileChooser.APPROVE_OPTION) {
             return;
@@ -1038,6 +1133,8 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
                     insert(document, entry.prefix, normalStyle());
                     insert(document, entry.fileName, fileStyle());
                     insert(document, System.lineSeparator(), normalStyle());
+                } else if (entry.system) {
+                    insert(document, entry.text + System.lineSeparator(), systemStyle());
                 } else {
                     if (hasReplyMeta(entry)) {
                         insert(document, buildReplyBlock(entry), replyStyle());
@@ -1058,13 +1155,14 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private SimpleAttributeSet normalStyle() {
         SimpleAttributeSet set = new SimpleAttributeSet();
-        StyleConstants.setForeground(set, Color.DARK_GRAY);
+        StyleConstants.setForeground(set, AppTheme.TEXT);
+        StyleConstants.setFontSize(set, 13);
         return set;
     }
 
     private SimpleAttributeSet fileStyle() {
         SimpleAttributeSet set = new SimpleAttributeSet();
-        StyleConstants.setForeground(set, new Color(0, 92, 204));
+        StyleConstants.setForeground(set, AppTheme.FILE_LINK);
         StyleConstants.setUnderline(set, true);
         StyleConstants.setBold(set, true);
         return set;
@@ -1072,7 +1170,15 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
 
     private SimpleAttributeSet replyStyle() {
         SimpleAttributeSet set = new SimpleAttributeSet();
-        StyleConstants.setForeground(set, new Color(142, 93, 20));
+        StyleConstants.setForeground(set, AppTheme.REPLY);
+        StyleConstants.setItalic(set, true);
+        StyleConstants.setLeftIndent(set, 8);
+        return set;
+    }
+
+    private SimpleAttributeSet systemStyle() {
+        SimpleAttributeSet set = new SimpleAttributeSet();
+        StyleConstants.setForeground(set, AppTheme.SYSTEM);
         StyleConstants.setItalic(set, true);
         return set;
     }
@@ -1126,6 +1232,23 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         return new UserItem(user, display, avatar);
     }
 
+    private void uploadPendingAvatar() {
+        if (pendingAvatar == null) {
+            return;
+        }
+        File avatar = pendingAvatar;
+        pendingAvatar = null;
+        if (avatar.length() > Protocol.MAX_AVATAR_SIZE_BYTES) {
+            addSystemToCurrent("Avatar phải nhỏ hơn 2MB");
+            return;
+        }
+        try {
+            socketService.sendAvatar(avatar);
+        } catch (IOException e) {
+            addSystemToCurrent("Không gửi được avatar: " + e.getMessage());
+        }
+    }
+
     private void updateProfileAvatar(String path) {
         ensureAvatarRequested(path);
         avatarPreviewLabel.setIcon(loadAvatarIcon(path, 36));
@@ -1137,6 +1260,9 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
     }
 
     private void handleTypingDraftChanged() {
+        if (!connected) {
+            return;
+        }
         String text = messageInput.getText().trim();
         if (text.isEmpty()) {
             stopTyping(true);
@@ -1398,28 +1524,54 @@ public class ChatFrame extends JFrame implements ClientSocketService.Listener {
         }
     }
 
+    private class ConversationItemRenderer extends JLabel implements ListCellRenderer<ConversationItem> {
+        @Override
+        public Component getListCellRendererComponent(JList<? extends ConversationItem> list, ConversationItem value,
+                                                      int index, boolean isSelected, boolean cellHasFocus) {
+            setOpaque(true);
+            setFont(AppTheme.baseFont());
+            setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            if (isSelected) {
+                setBackground(AppTheme.SELECTION);
+                setForeground(AppTheme.PRIMARY);
+            } else {
+                setBackground(AppTheme.SURFACE);
+                setForeground(AppTheme.TEXT);
+            }
+            if (value == null) {
+                setText("");
+                return this;
+            }
+            String icon = ConversationType.PRIVATE.equals(value.type) ? "💬 "
+                    : ConversationType.ROOM.equals(value.type) ? "👥 " : "🏠 ";
+            setText(icon + value.name);
+            return this;
+        }
+    }
+
     private class UserItemRenderer extends JLabel implements ListCellRenderer<UserItem> {
         @Override
         public Component getListCellRendererComponent(JList<? extends UserItem> list, UserItem value, int index,
                                                       boolean isSelected, boolean cellHasFocus) {
             setOpaque(true);
+            setFont(AppTheme.baseFont());
             if (isSelected) {
-                setBackground(list.getSelectionBackground());
-                setForeground(list.getSelectionForeground());
+                setBackground(AppTheme.SELECTION);
+                setForeground(AppTheme.PRIMARY);
             } else {
-                setBackground(list.getBackground());
-                setForeground(list.getForeground());
+                setBackground(AppTheme.SURFACE);
+                setForeground(AppTheme.TEXT);
             }
             if (value == null) {
                 setText("");
                 setIcon(null);
                 return this;
             }
-            setText(value.displayName + " @" + value.username);
-            setIcon(loadAvatarIcon(value.avatarPath, 28));
+            setText(value.displayName);
+            setIcon(loadAvatarIcon(value.avatarPath, 30));
             setHorizontalTextPosition(JLabel.RIGHT);
-            setIconTextGap(8);
-            setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+            setIconTextGap(10);
+            setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
             return this;
         }
     }
