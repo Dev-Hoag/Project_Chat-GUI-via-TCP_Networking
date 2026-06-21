@@ -151,6 +151,14 @@ public final class ClientSocketService {
             while (running) {
                 String line = Protocol.readLine(inputStream);
                 Protocol.ParsedMessage message = Protocol.parse(line);
+
+                if (Protocol.LOGIN_ERROR.equals(message.getCommand())
+                        || Protocol.REGISTER_ERROR.equals(message.getCommand())) {
+                    listener.onMessage(message);
+                    running = false;
+                    return;
+                }
+
                 if (Protocol.FILE_DOWNLOAD_META.equals(message.getCommand())) {
                     File file = receiveDownload(message.field(0), Long.parseLong(message.field(1)));
                     listener.onFileDownloaded(file);
@@ -165,7 +173,18 @@ public final class ClientSocketService {
             }
         } catch (IOException e) {
             if (running) {
+                System.out.println("[CLIENT READ ERROR] "
+                        + e.getClass().getSimpleName()
+                        + " - " + e.getMessage());
+                e.printStackTrace();
+
                 listener.onDisconnected(e.getMessage());
+
+                if (e instanceof EOFException) {
+                    running = false;
+                    return;
+                }
+
                 startReconnectLoop();
             }
         } finally {
@@ -219,7 +238,7 @@ public final class ClientSocketService {
     }
 
     private File receiveDownload(String fileName, long fileSize) throws IOException {
-        File downloadsDir = new File("downloads");
+        File downloadsDir = new File("downloads"); // khi client nhận avatar từ server sẽ tạo folder
         if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
             throw new IOException("Cannot create downloads directory");
         }

@@ -95,7 +95,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
     private final JMenuItem replyMenuItem = new JMenuItem("Reply");
     private final JMenuItem forwardMenuItem = new JMenuItem("Forward");
     private final JMenuItem downloadMenuItem = new JMenuItem("Download");
-    private final File avatarCacheDir = new File("client_files/avatars");
+    private final File avatarCacheDir = new File("client_files/avatars"); // Field này sẽ tạo mới avatar nếu chưa có
     private final Timer typingStopTimer = new Timer(1200, e -> stopTyping(true));
 
     private boolean readyForHistory;
@@ -123,9 +123,6 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         setSize(980, 680);
         setLocationRelativeTo(null);
         AppTheme.styleFrame(getContentPane());
-        if (!avatarCacheDir.exists()) {
-            avatarCacheDir.mkdirs();
-        }
         initUi();
         addLobbyConversation();
     }
@@ -424,6 +421,15 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
             connected = false;
             statusLabel.setText("Lỗi đăng nhập: " + message.field(0));
             addSystemToCurrent("Lỗi đăng nhập: " + message.field(0));
+
+            socketService.close();
+
+            JOptionPane.showMessageDialog(this,
+                    "Đăng nhập thất bại: " + message.field(0),
+                    "Lỗi đăng nhập",
+                    JOptionPane.ERROR_MESSAGE);
+
+            dispose();
         } else if (Protocol.ERROR.equals(command)) {
             addSystemToCurrent("Error: " + message.field(0));
         } else if (Protocol.REGISTER_SUCCESS.equals(command)) {

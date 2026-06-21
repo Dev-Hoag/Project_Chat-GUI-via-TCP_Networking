@@ -70,19 +70,31 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
                 } else if (Protocol.AVATAR_SET.equals(message.getCommand())) {
                     profileService.handleAvatarSet(this, message);
                 } else if (Protocol.AVATAR_REQUEST.equals(message.getCommand())) {
-                    profileService.handleAvatarRequest(this, message);
+                    try {
+                        profileService.handleAvatarRequest(this, message);
+                    } catch (IOException e) {
+                        System.out.println("[AVATAR] Cannot load avatar for " + username + ": " + e.getMessage());
+
+                        // Không đóng socket chỉ vì thiếu avatar
+                        send(Protocol.build(Protocol.AVATAR_SET_ERROR, "Avatar not found"));
+                    }
                 } else {
                     router.handle(this, message);
                 }
             }
         } catch (IOException e) {
-            System.out.println("[CLIENT] Disconnected: " + (username == null ? socket : username));
+            System.out.println("[CLIENT] Disconnected: " + (username == null ? socket : username)
+                    + " | reason: " + e.getClass().getSimpleName()
+                    + " - " + e.getMessage());
+            e.printStackTrace();
         } catch (Exception e) {
             System.out.println("[CLIENT] Error: " + e.getMessage());
             send(Protocol.build(Protocol.ERROR, e.getMessage()));
         } finally {
             close();
-            router.onClientDisconnected(username);
+            if (username != null) {
+                router.onClientDisconnected(username);
+            }
         }
     }
 
@@ -99,6 +111,10 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
         try {
             Protocol.writeLine(outputStream, line);
         } catch (IOException e) {
+            System.out.println("[SERVER SEND ERROR] user=" + username
+                    + " | line=" + line
+                    + " | error=" + e.getMessage());
+            e.printStackTrace();
             running = false;
         }
     }
@@ -132,24 +148,19 @@ public class ClientHandler implements Runnable, SocketHandler, ServerObserver {
     }
 
     private boolean authenticate() throws IOException {
-        while (running) {
-            String line = Protocol.readLine(inputStream);
-            Protocol.ParsedMessage message = Protocol.parse(line);
-            String command = message.getCommand();
-            if (Protocol.LOGIN.equals(command)) {
-                if (handleLogin(message)) {
-                    return true;
-                }
-                continue;
-            }
-            if (Protocol.REGISTER.equals(command)) {
-                if (handleRegister(message)) {
-                    return true;
-                }
-                continue;
-            }
-            send(Protocol.build(Protocol.LOGIN_ERROR, "First command must be LOGIN or REGISTER"));
+        String line = Protocol.readLine(inputStream);
+        Protocol.ParsedMessage message = Protocol.parse(line);
+        String command = message.getCommand();
+
+        if (Protocol.LOGIN.equals(command)) {
+            return handleLogin(message);
         }
+
+        if (Protocol.REGISTER.equals(command)) {
+            return handleRegister(message);
+        }
+
+        send(Protocol.build(Protocol.LOGIN_ERROR, "First command must be LOGIN or REGISTER"));
         return false;
     }
 
