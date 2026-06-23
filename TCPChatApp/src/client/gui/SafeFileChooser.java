@@ -12,6 +12,7 @@ import java.io.File;
  * Tránh lỗi NPE trên Windows khi JFileChooser gọi FileSystemView.getSystemIcon()
  * (Win32ShellFolder2$MultiResolutionIconImage).
  */
+// Lưu, tạo file và chứa icon
 public final class SafeFileChooser {
     private static final FileView SAFE_FILE_VIEW = new FileView() {
         @Override

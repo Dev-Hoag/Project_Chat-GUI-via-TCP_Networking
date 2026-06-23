@@ -25,7 +25,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 public final class AppTheme {
-    public static final Color BACKGROUND = new Color(241, 245, 249);
+    public static final Color BACKGROUND = new Color(241, 245, 249); // Nền background set màu red: 241, green: 245, blue: 249. Trộn 3 màu sẽ tạo thành màu xám
     public static final Color SURFACE = Color.WHITE;
     public static final Color SIDEBAR = new Color(248, 250, 252);
     public static final Color HEADER = new Color(30, 58, 95);
@@ -52,6 +52,7 @@ public final class AppTheme {
     private AppTheme() {
     }
 
+    // Method này giúp thay đổi style giao diện, gồm các nút, viền màn hình,...
     public static void install() {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -94,16 +95,19 @@ public final class AppTheme {
         root.setBackground(BACKGROUND);
     }
 
+    // Set font chữ
     public static void styleMutedLabel(JLabel label) {
-        label.setFont(smallFont());
-        label.setForeground(TEXT_MUTED);
+        label.setFont(smallFont()); // Set fort chữa sang chữ nhỏ
+        label.setForeground(TEXT_MUTED); // Đổi màu chữ sang màu nhạt
     }
 
+    // Set form chữ
     public static void styleFieldLabel(JLabel label) {
-        label.setFont(baseFont().deriveFont(Font.BOLD));
-        label.setForeground(TEXT);
+        label.setFont(baseFont().deriveFont(Font.BOLD)); // Set font chữ cơ bản và in đậm
+        label.setForeground(TEXT); //
     }
 
+    // Set các giao diện của các ô nhập liệu
     public static void styleTextField(JTextField field) {
         field.setUI(new javax.swing.plaf.basic.BasicTextFieldUI());
         field.setFont(baseFont());
@@ -118,14 +122,17 @@ public final class AppTheme {
         field.setSelectionColor(PRIMARY);
     }
 
+    // Set form nút 1
     public static void stylePrimaryButton(JButton button) {
         styleButton(button, PRIMARY, PRIMARY_HOVER, Color.WHITE, true);
     }
 
+    // Set form nút 2
     public static void styleSecondaryButton(JButton button) {
         styleButton(button, SECONDARY, SECONDARY_HOVER, TEXT, false);
     }
 
+    // Set form nút ẩn
     public static void styleGhostButton(JButton button) {
         styleButton(button, SURFACE, SECONDARY, TEXT_MUTED, false);
         button.setBorder(new CompoundBorder(
@@ -133,6 +140,7 @@ public final class AppTheme {
                 new EmptyBorder(6, 12, 6, 12)));
     }
 
+    // Set form nút, khi hover vào và ra
     private static void styleButton(JButton button, Color bg, Color hover, Color fg, boolean bold) {
         button.setFont(bold ? fontButton : baseFont());
         button.setBackground(bg);
@@ -156,6 +164,7 @@ public final class AppTheme {
         });
     }
 
+    // Tạo khug viền màn hình
     public static JPanel createCard() {
         JPanel card = new JPanel();
         card.setBackground(SURFACE);
@@ -165,6 +174,7 @@ public final class AppTheme {
         return card;
     }
 
+    // Set header của nền
     public static JPanel createHeader(String title, String subtitle) {
         JPanel header = new JPanel(new java.awt.BorderLayout(0, 4));
         header.setBackground(HEADER);
@@ -184,6 +194,7 @@ public final class AppTheme {
         return header;
     }
 
+    // Tạo cột bên trái, bên phải trong giao diện chính khi người dùng log in thành công
     public static JPanel createSidebar(String title) {
         JPanel panel = new JPanel(new java.awt.BorderLayout(0, 8));
         panel.setBackground(SIDEBAR);
@@ -199,6 +210,7 @@ public final class AppTheme {
         return panel;
     }
 
+    // Tạo 1 List chứa tất cả lịch sử người dùng
     public static JScrollPane wrapList(JList<?> list) {
         list.setBackground(SURFACE);
         list.setFixedCellHeight(42);
@@ -209,6 +221,7 @@ public final class AppTheme {
         return scroll;
     }
 
+    // Set form chat
     public static void styleChatPane(JTextPane pane) {
         pane.setBackground(CHAT_BG);
         pane.setForeground(TEXT);
@@ -217,6 +230,7 @@ public final class AppTheme {
         pane.setMargin(new java.awt.Insets(0, 0, 0, 0));
     }
 
+    // Set form nhập dữ liệu tin nhắn
     public static void styleInputField(JTextField field) {
         styleTextField(field);
         field.setPreferredSize(new Dimension(200, 38));

@@ -112,6 +112,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         this(username, socketService, null);
     }
 
+    // Form constructor giao diện màn hình, kết nối socket tới server
     public ChatWindow(String username, ClientSocketService socketService, File pendingAvatar) {
         this.username = username;
         this.socketService = socketService;
@@ -127,6 +128,8 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         addLobbyConversation();
     }
 
+    // Khi nhận được tin nhắn đã được phân tích từ server,
+    // chuyển việc xử lý sang Event Dispatch Thread để cập nhật giao diện an toàn
     @Override
     public void onMessage(Protocol.ParsedMessage message) {
         SwingUtilities.invokeLater(new Runnable() {
@@ -137,6 +140,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         });
     }
 
+    // Chức năng download file, gồm đường dẫn.
     @Override
     public void onFileDownloaded(File file) {
         SwingUtilities.invokeLater(new Runnable() {
@@ -147,6 +151,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         });
     }
 
+    // Xử lý logic khi người dùng download file
     @Override
     public void onAvatarDownloaded(String avatarPath, File file) {
         SwingUtilities.invokeLater(new Runnable() {
@@ -167,6 +172,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         });
     }
 
+    // Xử lý logic khi người dùng ngắt kết nối. server ngắt kết nối
     @Override
     public void onDisconnected(String reason) {
         SwingUtilities.invokeLater(new Runnable() {
@@ -182,6 +188,7 @@ public class ChatWindow extends JFrame implements ClientSocketService.Listener {
         });
     }
 
+    // Kiểm tra trạng thái của hệ thống
     @Override
     public void onConnectionStatus(String status) {
         SwingUtilities.invokeLater(new Runnable() {
