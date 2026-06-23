@@ -1,12 +1,16 @@
 @echo off
-chcp 65001 > nul
+setlocal
 cd /d "%~dp0"
 
-if not exist out (
-    echo Folder out not found. Running compile first...
-    call compile.bat
+set "CP=target\classes;lib\postgresql-jdbc.jar"
+
+if not exist "target\classes" (
+  echo [ERROR] Missing build output: target\classes
+  echo Please build the project first.
+  pause
+  exit /b 1
 )
 
-echo Starting TCPChatGUI server on port 5000...
-java -cp "out;lib\postgresql-jdbc.jar" server.ChatServer 5000
+echo [INFO] Starting server on port 5001...
+java -cp "%CP%" server.ChatServer 5001
 pause
