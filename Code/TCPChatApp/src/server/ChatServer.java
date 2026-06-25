@@ -1,21 +1,20 @@
 package server;
 
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
 import server.observer.ServerBroadcaster;
 import server.router.MessageRouter;
 import server.service.auth.AuthService;
-import server.service.avatar.AvatarService;
 import server.service.client.ClientManager;
 import server.service.client.IClientManager;
 import server.service.database.DatabaseManager;
 import server.service.database.IDatabase;
+import server.service.avatar.AvatarService;
 import server.service.file.FileService;
 import server.service.file.IFileService;
 import server.service.profile.ProfileService;
 import server.service.user.IUserRepository;
-
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
 
 public class ChatServer {
     // Port mặc định nếu không truyền tham số khi chạy server.
