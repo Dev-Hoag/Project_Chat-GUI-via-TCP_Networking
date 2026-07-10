@@ -10,6 +10,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.Properties;
 import java.util.ArrayList;
@@ -35,11 +36,11 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         this.schemaInitializer = new DatabaseSchemaInitializer();
 
         if (!configured) {
-            System.out.println("[WARN] Supabase DB config is not fully configured. Server will run without DB persistence.");
+            System.out.println("[WARN] Database config is not fully configured. Server will run without DB persistence.");
             return;
         }
 
-        loadPostgresDriver();
+        loadMariaDbDriver();
         initialize();
     }
 
@@ -88,18 +89,14 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         if (!configured) {
             return null;
         }
-        String sql = "INSERT INTO users (username, display_name, avatar_path) VALUES (?, ?, ?) " +
-                "RETURNING id, username, display_name, avatar_path, is_active, created_at, updated_at, last_login_at";
+        String sql = "INSERT INTO users (username, display_name, avatar_path) VALUES (?, ?, ?)";
         try (Connection connection = getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+             PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, username);
             statement.setString(2, displayName);
             statement.setString(3, avatarPath);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return mapUser(resultSet);
-                }
-            }
+            statement.executeUpdate();
+            return getUserByUsername(username);
         } catch (SQLException e) {
             System.out.println("[DB] Cannot create user: " + e.getMessage());
         }
@@ -172,8 +169,8 @@ public class DatabaseManager implements IDatabase, IUserRepository {
             return;
         }
         String roomSql = "INSERT INTO rooms (room_id, room_name, created_by) VALUES (?, ?, ?) " +
-                "ON CONFLICT (room_id) DO UPDATE SET room_name = EXCLUDED.room_name";
-        String memberSql = "INSERT INTO room_members (room_id, username) VALUES (?, ?) ON CONFLICT DO NOTHING";
+                "ON DUPLICATE KEY UPDATE room_name = VALUES(room_name), created_by = VALUES(created_by)";
+        String memberSql = "INSERT IGNORE INTO room_members (room_id, username) VALUES (?, ?)";
         try (Connection connection = getConnection();
              PreparedStatement roomStatement = connection.prepareStatement(roomSql);
              PreparedStatement memberStatement = connection.prepareStatement(memberSql)) {
@@ -238,7 +235,7 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         if (!configured) {
             return;
         }
-        String sql = "INSERT INTO private_conversations (conversation_id, user_a, user_b) VALUES (?, ?, ?) ON CONFLICT DO NOTHING";
+        String sql = "INSERT IGNORE INTO private_conversations (conversation_id, user_a, user_b) VALUES (?, ?, ?)";
         try (Connection connection = getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, conversationId);
@@ -362,11 +359,11 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         return DriverManager.getConnection(url, props);
     }
 
-    private void loadPostgresDriver() {
+    private void loadMariaDbDriver() {
         try {
-            Class.forName("org.postgresql.Driver");
+            Class.forName("org.mariadb.jdbc.Driver");
         } catch (ClassNotFoundException e) {
-            System.out.println("[DB] PostgreSQL JDBC driver not found. Make sure lib/postgresql-jdbc.jar is in the classpath.");
+            System.out.println("[DB] MariaDB JDBC driver not found. Make sure the Maven dependency is available.");
         }
     }
 

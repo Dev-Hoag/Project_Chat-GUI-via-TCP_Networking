@@ -3,6 +3,8 @@ package server.service.database;
 import common.ConversationType;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -11,51 +13,75 @@ import java.sql.Statement;
  */
 public class DatabaseSchemaInitializer {
     public void initialize(Connection connection) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS messages (" +
-                "id BIGSERIAL PRIMARY KEY," +
-                "sender TEXT NOT NULL," +
-                "conversation_type TEXT NOT NULL DEFAULT '" + ConversationType.LOBBY + "'," +
-                "conversation_id TEXT NOT NULL DEFAULT 'lobby'," +
-                "receiver TEXT," +
-                "message_type TEXT NOT NULL," +
-                "content TEXT," +
-                "file_name TEXT," +
-                "file_path TEXT," +
-                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                ")";
         try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate(sql);
-            statement.executeUpdate("ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_type TEXT NOT NULL DEFAULT '" + ConversationType.LOBBY + "'");
-            statement.executeUpdate("ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id TEXT NOT NULL DEFAULT 'lobby'");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS rooms (" +
-                    "room_id TEXT PRIMARY KEY," +
-                    "room_name TEXT NOT NULL," +
-                    "created_by TEXT NOT NULL," +
-                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                    ")");
+                    "room_id VARCHAR(100) PRIMARY KEY," +
+                    "room_name VARCHAR(255) NOT NULL," +
+                    "created_by VARCHAR(100) NOT NULL," +
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS room_members (" +
-                    "room_id TEXT NOT NULL," +
-                    "username TEXT NOT NULL," +
+                    "room_id VARCHAR(100) NOT NULL," +
+                    "username VARCHAR(100) NOT NULL," +
                     "PRIMARY KEY (room_id, username)" +
-                    ")");
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS private_conversations (" +
-                    "conversation_id TEXT PRIMARY KEY," +
-                    "user_a TEXT NOT NULL," +
-                    "user_b TEXT NOT NULL," +
-                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
-                    ")");
+                    "conversation_id VARCHAR(150) PRIMARY KEY," +
+                    "user_a VARCHAR(100) NOT NULL," +
+                    "user_b VARCHAR(100) NOT NULL," +
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS users (" +
-                    "id BIGSERIAL PRIMARY KEY," +
-                    "username TEXT NOT NULL UNIQUE," +
-                    "display_name TEXT NOT NULL," +
-                    "avatar_path TEXT," +
+                    "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+                    "username VARCHAR(100) NOT NULL UNIQUE," +
+                    "display_name VARCHAR(150) NOT NULL," +
+                    "avatar_path VARCHAR(500)," +
                     "is_active BOOLEAN NOT NULL DEFAULT TRUE," +
-                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                    "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+                    "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
                     "last_login_at TIMESTAMP" +
-                    ")");
-            statement.executeUpdate("ALTER TABLE users DROP COLUMN IF EXISTS password_hash");
-            statement.executeUpdate("ALTER TABLE users DROP COLUMN IF EXISTS password_salt");
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS messages (" +
+                    "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY," +
+                    "sender VARCHAR(100) NOT NULL," +
+                    "conversation_type VARCHAR(32) NOT NULL DEFAULT '" + ConversationType.LOBBY + "'," +
+                    "conversation_id VARCHAR(150) NOT NULL DEFAULT 'lobby'," +
+                    "receiver VARCHAR(100)," +
+                    "message_type VARCHAR(32) NOT NULL," +
+                    "content TEXT," +
+                    "file_name VARCHAR(255)," +
+                    "file_path VARCHAR(500)," +
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP" +
+                    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            ensureColumnExists(connection, "messages", "conversation_type",
+                    "ALTER TABLE messages ADD COLUMN conversation_type VARCHAR(32) NOT NULL DEFAULT '" + ConversationType.LOBBY + "'");
+            ensureColumnExists(connection, "messages", "conversation_id",
+                    "ALTER TABLE messages ADD COLUMN conversation_id VARCHAR(150) NOT NULL DEFAULT 'lobby'");
+            dropColumnIfExists(connection, "users", "password_hash");
+            dropColumnIfExists(connection, "users", "password_salt");
+        }
+    }
+
+    private void ensureColumnExists(Connection connection, String tableName, String columnName, String alterSql) throws SQLException {
+        if (!columnExists(connection, tableName, columnName)) {
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(alterSql);
+            }
+        }
+    }
+
+    private void dropColumnIfExists(Connection connection, String tableName, String columnName) throws SQLException {
+        if (columnExists(connection, tableName, columnName)) {
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate("ALTER TABLE " + tableName + " DROP COLUMN " + columnName);
+            }
+        }
+    }
+
+    private boolean columnExists(Connection connection, String tableName, String columnName) throws SQLException {
+        DatabaseMetaData metaData = connection.getMetaData();
+        try (ResultSet resultSet = metaData.getColumns(connection.getCatalog(), null, tableName, columnName)) {
+            return resultSet.next();
         }
     }
 }

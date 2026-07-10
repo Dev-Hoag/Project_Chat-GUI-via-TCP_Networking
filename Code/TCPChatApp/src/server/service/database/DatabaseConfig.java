@@ -13,9 +13,12 @@ import java.util.Map;
  * Loads database credentials from env vars or local .env.
  */
 public final class DatabaseConfig {
-    private static final String ENV_URL = "SUPABASE_DB_URL";
-    private static final String ENV_USER = "SUPABASE_DB_USER";
-    private static final String ENV_PASSWORD = "SUPABASE_DB_PASSWORD";
+    private static final String ENV_URL = "DB_URL";
+    private static final String ENV_USER = "DB_USER";
+    private static final String ENV_PASSWORD = "DB_PASSWORD";
+    private static final String LEGACY_ENV_URL = "SUPABASE_DB_URL";
+    private static final String LEGACY_ENV_USER = "SUPABASE_DB_USER";
+    private static final String LEGACY_ENV_PASSWORD = "SUPABASE_DB_PASSWORD";
 
     private final String url;
     private final String user;
@@ -29,9 +32,9 @@ public final class DatabaseConfig {
 
     public static DatabaseConfig load() {
         Map<String, String> envFile = loadDotEnv();
-        String url = getConfigValue(ENV_URL, envFile);
-        String user = getConfigValue(ENV_USER, envFile);
-        String password = getConfigValue(ENV_PASSWORD, envFile);
+        String url = getConfigValue(ENV_URL, LEGACY_ENV_URL, envFile);
+        String user = getConfigValue(ENV_USER, LEGACY_ENV_USER, envFile);
+        String password = getConfigValue(ENV_PASSWORD, LEGACY_ENV_PASSWORD, envFile);
         return new DatabaseConfig(url, user, password);
     }
 
@@ -51,12 +54,21 @@ public final class DatabaseConfig {
         return password;
     }
 
-    private static String getConfigValue(String key, Map<String, String> envFile) {
+    private static String getConfigValue(String key, String legacyKey, Map<String, String> envFile) {
         String value = System.getenv(key);
         if (isNotBlank(value)) {
             return value;
         }
-        return envFile.get(key);
+        value = envFile.get(key);
+        if (isNotBlank(value)) {
+            return value;
+        }
+
+        String legacyValue = System.getenv(legacyKey);
+        if (isNotBlank(legacyValue)) {
+            return legacyValue;
+        }
+        return envFile.get(legacyKey);
     }
 
     private static Map<String, String> loadDotEnv() {
