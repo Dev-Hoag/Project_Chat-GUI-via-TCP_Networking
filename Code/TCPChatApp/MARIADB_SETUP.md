@@ -56,6 +56,10 @@ Neu ban da co file `.env` cu dung `SUPABASE_DB_*` thi co the doi sang ten moi. C
   - `rooms`
   - `room_members`
   - `private_conversations`
+- Neu chay bang `cmd`, co the dung:
+  - `run-server.bat`
+  - `run-client.bat`
+- Script da kem san `Code/TCPChatApp/lib/mariadb-java-client-3.5.1.jar` nen se khong bi loi thieu driver.
 
 ## 6. Kiem tra nhanh trong HeidiSQL
 
