@@ -39,7 +39,7 @@ public class DatabaseSchemaInitializer {
                     "is_active BOOLEAN NOT NULL DEFAULT TRUE," +
                     "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
                     "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
-                    "last_login_at TIMESTAMP" +
+                    "last_login_at TIMESTAMP NULL DEFAULT NULL" +
                     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS messages (" +
                     "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY," +

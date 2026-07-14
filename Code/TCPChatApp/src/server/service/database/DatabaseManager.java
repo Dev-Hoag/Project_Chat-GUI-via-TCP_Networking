@@ -40,7 +40,7 @@ public class DatabaseManager implements IDatabase, IUserRepository {
             return;
         }
 
-        loadMariaDbDriver();
+        loadMySqlDriver();
         initialize();
     }
 
@@ -359,11 +359,11 @@ public class DatabaseManager implements IDatabase, IUserRepository {
         return DriverManager.getConnection(url, props);
     }
 
-    private void loadMariaDbDriver() {
+    private void loadMySqlDriver() {
         try {
-            Class.forName("org.mariadb.jdbc.Driver");
+            Class.forName("com.mysql.cj.jdbc.Driver");
         } catch (ClassNotFoundException e) {
-            System.out.println("[DB] MariaDB JDBC driver not found. Make sure the Maven dependency is available.");
+            System.out.println("[DB] MySQL JDBC driver not found. Make sure the Maven dependency is available.");
         }
     }
 
